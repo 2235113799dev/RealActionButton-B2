@@ -46,7 +46,8 @@ static NSString *ABMCLinkTitle(NSString *linkID) {
     PSSpecifier *parent = self.specifier;
     _preferenceKey = [[parent propertyForKey:@"key"] copy];
     _defaultValue = [[parent propertyForKey:@"default"] copy];
-    self.title = @"选择动作";
+    NSString *label = [parent name];
+    self.title = label.length ? label : @"选择动作";
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -108,10 +109,16 @@ static NSString *ABMCLinkTitle(NSString *linkID) {
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
     cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
     if ([spec propertyForKey:@"chosenAction"]) {
-        cell.textLabel.textColor = UIColor.systemBlueColor;
+        UIColor *blue = UIColor.systemBlueColor;
+        cell.tintColor = blue;
+        cell.textLabel.textColor = blue;
+        cell.detailTextLabel.textColor = blue;
         cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
-        cell.imageView.image = ABMCTintedIcon(@"lightbulb.max", UIColor.systemBlueColor);
-        cell.accessoryView = nil;
+        UIImageView *light = [[UIImageView alloc] initWithImage:ABMCTintedIcon(@"lightbulb.max", blue)];
+        light.frame = CGRectMake(0, 0, 30, 30);
+        light.contentMode = UIViewContentModeScaleAspectFit;
+        cell.imageView.image = nil;
+        cell.accessoryView = light;
     }
     NSString *icon = [spec propertyForKey:@"iconToken"];
     if (icon.length) cell.imageView.image = ABMCTintedIcon(icon, UIColor.systemBlueColor);

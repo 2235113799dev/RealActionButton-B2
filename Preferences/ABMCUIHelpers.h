@@ -2,6 +2,7 @@
 
 UIImage *ABMCIconImage(NSString *token);
 UIImage *ABMCIconImageForProxy(id proxy);
+UIImage *ABMCIconImageForBundleID(NSString *bundleID);
 UIImage *ABMCTintedIcon(NSString *token, UIColor *color);
 NSString *ABMCInferLinkIcon(NSString *urlString);
 NSString *ABMCApplicationName(NSString *bundleID);

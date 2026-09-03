@@ -44,6 +44,10 @@ static id ABMCInvoke(id target, NSString *name) { SEL selector=NSSelectorFromStr
         NSMutableArray *bases=[NSMutableArray array];
         id dataURL=ABMCInvoke(proxy,@"dataContainerURL"); if([dataURL isKindOfClass:[NSURL class]])[bases addObject:dataURL];
         id groupURLs=ABMCInvoke(proxy,@"groupContainerURLs"); if([groupURLs isKindOfClass:[NSDictionary class]])[bases addObjectsFromArray:[groupURLs allValues]];
+        SEL groupSelector=NSSelectorFromString(@"groupContainerURLForSecurityApplicationGroupIdentifier:");
+        for(NSString *group in @[@"group.is.workflow.my.app", @"group.com.apple.shortcuts", @"group.com.apple.shortcuts.widgets"]) {
+            if([proxy respondsToSelector:groupSelector]) { id URL=((id(*)(id,SEL,id))objc_msgSend)(proxy,groupSelector,group); if([URL isKindOfClass:[NSURL class]])[bases addObject:URL]; }
+        }
         for(NSURL *base in bases) {
             NSDirectoryEnumerator *enumerator=[[NSFileManager defaultManager] enumeratorAtURL:base includingPropertiesForKeys:nil options:NSDirectoryEnumerationSkipsHiddenFiles errorHandler:nil];
             NSUInteger found=0;
@@ -60,6 +64,39 @@ static id ABMCInvoke(id target, NSString *name) { SEL selector=NSSelectorFromStr
     if(name.length&&ABMCIsUUID(identifier)) results[identifier.uppercaseString]=@{ @"name":name, @"identifier":identifier.uppercaseString };
 }
 
+- (void)readWorkflowKitInto:(NSMutableDictionary *)results {
+    @try {
+        dlopen("/System/Library/PrivateFrameworks/WorkflowKit.framework/WorkflowKit", RTLD_LAZY | RTLD_LOCAL);
+        for (NSString *className in @[@"WFWorkflowController", @"WFWorkflowManager", @"WFWorkflowStore", @"WFDatabase", @"WFWorkflowDatabase", @"ICDatabase"]) {
+            Class klass = NSClassFromString(className);
+            if (!klass) continue;
+            NSMutableArray *targets = [NSMutableArray array];
+            for (NSString *sharedName in @[@"sharedInstance", @"sharedController", @"sharedDatabase", @"sharedStore", @"defaultStore", @"defaultDatabase"]) {
+                SEL selector = NSSelectorFromString(sharedName);
+                if ([klass respondsToSelector:selector]) {
+                    id target = ((id (*)(id, SEL))objc_msgSend)(klass, selector);
+                    if (target) [targets addObject:target];
+                }
+            }
+            for (id target in targets) {
+                for (NSString *method in @[@"sortedVisibleWorkflowsByName", @"allWorkflows", @"allWorkflowsSortedByName", @"visibleWorkflows", @"workflows", @"workflowRecords"]) {
+                    SEL selector = NSSelectorFromString(method);
+                    if (![target respondsToSelector:selector]) continue;
+                    id workflows = ((id (*)(id, SEL))objc_msgSend)(target, selector);
+                    if (![workflows isKindOfClass:[NSArray class]]) continue;
+                    for (id workflow in workflows) {
+                        NSString *name = nil, *identifier = nil;
+                        for (NSString *selectorName in @[@"name", @"localizedName", @"displayName", @"title"]) { id value = ABMCInvoke(workflow, selectorName); if ([value isKindOfClass:[NSString class]] && [value length]) { name = value; break; } }
+                        for (NSString *selectorName in @[@"workflowIdentifier", @"identifier", @"persistentIdentifier", @"recordIdentifier", @"uniqueIdentifier"]) { id value = ABMCInvoke(workflow, selectorName); if ([value isKindOfClass:[NSString class]] && [value length]) { identifier = value; break; } }
+                        [self addName:name identifier:identifier into:results];
+                    }
+                }
+            }
+            if (results.count) return;
+        }
+    } @catch (NSException *exception) {}
+}
+
 - (void)readWorkflowDatabase:(NSString *)path into:(NSMutableDictionary *)results {
     sqlite3 *db=NULL; if(sqlite3_open_v2(path.fileSystemRepresentation,&db,SQLITE_OPEN_READONLY,NULL)!=SQLITE_OK){if(db)sqlite3_close(db);return;}
     sqlite3_stmt *tables=NULL;
@@ -72,7 +109,7 @@ static id ABMCInvoke(id target, NSString *name) { SEL selector=NSSelectorFromStr
             if(sqlite3_prepare_v2(db,pragma.UTF8String,-1,&columns,NULL)==SQLITE_OK) while(sqlite3_step(columns)==SQLITE_ROW) {
                 const char *columnText=(const char *)sqlite3_column_text(columns,1); if(!columnText)continue; NSString *column=[NSString stringWithUTF8String:columnText],*field=column.lowercaseString;
                 if(!nameColumn&&([field containsString:@"name"]||[field containsString:@"title"]))nameColumn=column;
-                if(!idColumn&&([field containsString:@"workflowidentifier"]||[field containsString:@"uuid"]||[field isEqualToString:@"identifier"]||[field isEqualToString:@"zidentifier"]))idColumn=column;
+                if(!idColumn&&([field containsString:@"workflowidentifier"]||[field containsString:@"workflowid"]||[field containsString:@"uuid"]||[field isEqualToString:@"identifier"]||[field isEqualToString:@"zidentifier"]))idColumn=column;
             }
             if(columns)sqlite3_finalize(columns); if(!nameColumn||!idColumn)continue;
             NSString *query=[NSString stringWithFormat:@"SELECT \"%@\",\"%@\" FROM \"%@\" WHERE \"%@\" IS NOT NULL",[nameColumn stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""],[idColumn stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""],escaped,[nameColumn stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""]];
@@ -96,6 +133,7 @@ static id ABMCInvoke(id target, NSString *name) { SEL selector=NSSelectorFromStr
 
 - (void)reloadShortcuts {
     NSMutableDictionary *results=[NSMutableDictionary dictionary];
+    [self readWorkflowKitInto:results];
     NSArray *paths=[self databasePaths];
     for(NSString *path in paths) [self readWorkflowDatabase:path into:results];
     // Exported .shortcut files are a secondary source; the database remains authoritative.

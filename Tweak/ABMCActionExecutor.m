@@ -416,7 +416,7 @@ BOOL ABMCPerformingDefaultAction = NO;
             if (iconController && [iconController respondsToSelector:activate] && workflowClass && [workflowClass instancesRespondToSelector:initSel]) {
                 id workflow = ((id (*)(id, SEL, id))objc_msgSend)([workflowClass alloc], initSel, identifier);
                 if (workflow) {
-                    ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconController, activate, workflow, @"com.apple.shortcuts", nil);
+                    ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconController, activate, workflow, @"is.workflow.my.app", nil);
                     handled = YES;
                 }
             }

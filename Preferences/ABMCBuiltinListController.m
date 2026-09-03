@@ -1,25 +1,27 @@
 #import "ABMCBuiltinListController.h"
-#import <objc/message.h>
+#import "ABMCUIHelpers.h"
 
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCChanged CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged")
 
-typedef struct { NSString *identifier; NSString *title; } ABMCBuiltinAction;
-static const ABMCBuiltinAction kBuiltinActions[] = {
-    {@"default", @"系统默认"}, {@"flashlight", @"手电筒"}, {@"camera", @"相机"}, {@"silent", @"静音切换"},
-    {@"screenshot", @"截屏"}, {@"lock", @"锁屏"}, {@"respring", @"重启界面"}, {@"wechatScan", @"微信扫码"},
-    {@"wechatPay", @"微信付款码"}, {@"alipayScan", @"支付宝扫码"}, {@"alipayPay", @"支付宝付款码"}, {@"none", @"无操作"}
+typedef struct { NSString *identifier; NSString *title; NSString *icon; } ABMCBuiltinAction;
+static const ABMCBuiltinAction kActions[] = {
+    {@"default", @"系统默认", @"gearshape.fill"}, {@"flashlight", @"手电筒", @"flashlight.on.fill"},
+    {@"camera", @"相机", @"camera.fill"}, {@"silent", @"静音切换", @"bell.slash.fill"},
+    {@"screenshot", @"截屏", @"viewfinder"}, {@"lock", @"锁屏", @"lock.fill"},
+    {@"respring", @"重启界面", @"arrow.clockwise"}, {@"wechatScan", @"微信扫码", @"qrcode.viewfinder"},
+    {@"wechatPay", @"微信付款码", @"creditcard.fill"}, {@"alipayScan", @"支付宝扫码", @"qrcode.viewfinder"},
+    {@"alipayPay", @"支付宝付款码", @"creditcard.fill"}, {@"none", @"无操作", @"nosign"}
 };
 
-@implementation ABMCBuiltinListController {
-    NSString *_preferenceKey;
-    NSString *_searchText;
-}
-- (instancetype)initWithPreferenceKey:(NSString *)key { if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) { _preferenceKey = [key copy]; self.title = @"内置动作"; } return self; }
-- (void)viewDidLoad { [super viewDidLoad]; _searchText = @""; UISearchBar *bar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 56)]; bar.placeholder = @"搜索内置动作"; bar.delegate = (id)self; self.tableView.tableHeaderView = bar; }
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { NSInteger n = 0; for (NSUInteger i=0; i<sizeof(kBuiltinActions)/sizeof(kBuiltinActions[0]); i++) if (!_searchText.length || [kBuiltinActions[i].title localizedCaseInsensitiveContainsString:_searchText]) n++; return n; }
-- (NSInteger)filteredIndex:(NSInteger)row { NSInteger n=0; for (NSUInteger i=0; i<sizeof(kBuiltinActions)/sizeof(kBuiltinActions[0]); i++) if (!_searchText.length || [kBuiltinActions[i].title localizedCaseInsensitiveContainsString:_searchText]) { if (n++ == row) return i; } return NSNotFound; }
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath { UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"BuiltinCell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"BuiltinCell"]; NSInteger i = [self filteredIndex:indexPath.row]; cell.textLabel.text = kBuiltinActions[i].title; CFStringRef v = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain); cell.accessoryType = v && [(__bridge NSString *)v isEqualToString:kBuiltinActions[i].identifier] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone; if (v) CFRelease(v); return cell; }
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath { NSInteger i=[self filteredIndex:indexPath.row]; NSString *a=kBuiltinActions[i].identifier; CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)a, ABMCDomain); CFPreferencesAppSynchronize(ABMCDomain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES); [self.navigationController popViewControllerAnimated:YES]; }
-- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text { _searchText = [text copy]; [self.tableView reloadData]; }
+@interface ABMCBuiltinListController () <UISearchBarDelegate>
+@end
+@implementation ABMCBuiltinListController { NSString *_preferenceKey; NSString *_query; }
+- (instancetype)initWithPreferenceKey:(NSString *)key { if ((self=[super initWithStyle:UITableViewStyleInsetGrouped])) { _preferenceKey=[key copy]; self.title=@"内置动作"; } return self; }
+- (void)viewDidLoad { [super viewDidLoad]; _query=@""; UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,68)]; UISearchBar *search=[[UISearchBar alloc] initWithFrame:CGRectInset(header.bounds,8,6)]; search.placeholder=@"搜索内置动作"; search.delegate=self; [header addSubview:search]; self.tableView.tableHeaderView=header; }
+- (NSInteger)indexForFilteredRow:(NSInteger)row { NSInteger matched=0; for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++){ if(!_query.length || [kActions[i].title localizedCaseInsensitiveContainsString:_query]) { if(matched++==row) return i; } } return NSNotFound; }
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { NSInteger total=0; for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++) if(!_query.length||[kActions[i].title localizedCaseInsensitiveContainsString:_query]) total++; return total; }
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath { UITableViewCell *cell=[tableView dequeueReusableCellWithIdentifier:@"BuiltinCell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"BuiltinCell"]; NSInteger index=[self indexForFilteredRow:indexPath.row]; cell.imageView.image=ABMCTintedIcon(kActions[index].icon,UIColor.systemBlueColor); cell.textLabel.font=[UIFont systemFontOfSize:17]; cell.textLabel.text=kActions[index].title; CFStringRef value=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey,ABMCDomain); cell.accessoryType=value&&[(__bridge NSString *)value isEqualToString:kActions[index].identifier]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone; if(value) CFRelease(value); return cell; }
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath { NSInteger index=[self indexForFilteredRow:indexPath.row]; NSString *action=kActions[index].identifier; CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey,(__bridge CFPropertyListRef)action,ABMCDomain); CFPreferencesAppSynchronize(ABMCDomain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),ABMCChanged,NULL,NULL,YES); [self.navigationController popViewControllerAnimated:YES]; }
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text { _query=[text copy] ?: @""; [self.tableView reloadData]; }
 @end

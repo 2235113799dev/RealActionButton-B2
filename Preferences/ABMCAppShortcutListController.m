@@ -1,62 +1,28 @@
 #import "ABMCAppShortcutListController.h"
 #import "ABMCUIHelpers.h"
 #import <objc/message.h>
+#import <dlfcn.h>
 
 #define Domain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define Changed CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged")
-static id Call(id object, NSString *name) { SEL s=NSSelectorFromString(name); return object&&[object respondsToSelector:s]?((id(*)(id,SEL))objc_msgSend)(object,s):nil; }
-static BOOL HasChinese(NSString *value) { for(NSUInteger i=0;i<value.length;i++){unichar c=[value characterAtIndex:i];if(c>=0x4E00&&c<=0x9FFF)return YES;}return NO; }
+static id Call(id o,NSString*n){SEL s=NSSelectorFromString(n);return o&&[o respondsToSelector:s]?((id(*)(id,SEL))objc_msgSend)(o,s):nil;}
+static BOOL Chinese(NSString*s){for(NSUInteger i=0;i<s.length;i++){unichar c=[s characterAtIndex:i];if(c>=0x4E00&&c<=0x9FFF)return YES;}return NO;}
+static NSString *ChineseTitle(NSString *title,NSString *type){if(Chinese(title))return title;NSString *v=type.lowercaseString;NSDictionary*m=@{@"search":@"搜索",@"scan":@"扫码",@"qrcode":@"扫码",@"compose":@"新建",@"new":@"新建",@"camera":@"相机",@"settings":@"设置",@"profile":@"个人资料",@"message":@"消息",@"pay":@"付款",@"code":@"扫码"};for(NSString*k in m)if([v containsString:k])return m[k];return nil;}
 
 @interface ABMCAppShortcutListController () <UISearchBarDelegate>
 @end
-@implementation ABMCAppShortcutListController { NSString *_key,*_query; NSArray *_groups; BOOL _loading; }
-- (instancetype)initWithPreferenceKey:(NSString *)key { if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_key=[key copy];self.title=@"快捷方式";}return self; }
-- (void)viewDidLoad { [super viewDidLoad];_query=@"";self.tableView.rowHeight=64;UIView*h=[[UIView alloc]initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,68)];UISearchBar*s=[[UISearchBar alloc]initWithFrame:CGRectInset(h.bounds,8,6)];s.placeholder=@"搜索快捷方式";s.delegate=self;[h addSubview:s];self.tableView.tableHeaderView=h;self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(reloadShortcuts)];[self reloadShortcuts]; }
-- (void)addItems:(NSArray *)raw into:(NSMutableArray *)items {
-    for(id entry in [raw isKindOfClass:NSArray.class]?raw:@[]) {
-        NSDictionary *dict=[entry isKindOfClass:NSDictionary.class]?entry:nil;
-        NSString *type=Call(entry,@"type")?:dict[@"UIApplicationShortcutItemType"];
-        NSString *title=Call(entry,@"localizedTitle")?:Call(entry,@"title")?:dict[@"UIApplicationShortcutItemTitle"];
-        NSString *subtitle=Call(entry,@"localizedSubtitle")?:dict[@"UIApplicationShortcutItemSubtitle"]?:@"";
-        // The user requested Chinese-only presentation; do not expose raw
-        // English identifiers when an app has no Chinese localization.
-        if(!type.length||!title.length||!HasChinese(title))continue;
-        BOOL duplicate=NO;for(NSDictionary*x in items)if([x[@"type"]isEqualToString:type]){duplicate=YES;break;}
-        if(!duplicate)[items addObject:@{ @"type":type,@"title":title,@"subtitle":subtitle }];
-    }
-}
-- (void)reloadShortcuts {
-    if(_loading)return;
-    _loading=YES;
-    // Snapshot application objects once. No SBSApplicationClient/XPC probing:
-    // that synchronous service path was responsible for watchdog stalls.
-    NSArray *applications=[ABMCInstalledApplications() copy];
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{
-        @autoreleasepool {
-            NSMutableArray *groups=[NSMutableArray array];
-            for(id app in applications) {
-                NSString *bundleID=ABMCBundleIdentifierForApplication(app),*name=ABMCDisplayNameForApplication(app);
-                if(!bundleID.length||!name.length)continue;
-                NSMutableArray *items=[NSMutableArray array];
-                [self addItems:Call(app,@"staticShortcutItems") into:items];
-                NSURL *url=Call(app,@"bundleURL");
-                [self addItems:[NSBundle bundleWithURL:url].infoDictionary[@"UIApplicationShortcutItems"] into:items];
-                if(items.count)[groups addObject:@{ @"id":bundleID,@"name":name,@"items":items }];
-            }
-            NSArray *sorted=[groups sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];}];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                self->_groups=sorted;
-                self->_loading=NO;
-                [UIView performWithoutAnimation:^{ [self.tableView reloadData]; }];
-            });
-        }
-    });
-}
-- (NSArray *)visibleGroups {if(!_query.length)return _groups?:@[];NSMutableArray*r=[NSMutableArray array];for(NSDictionary*g in _groups){NSMutableArray*m=[NSMutableArray array];for(NSDictionary*i in g[@"items"]){if([g[@"name"] localizedCaseInsensitiveContainsString:_query]||[g[@"id"] localizedCaseInsensitiveContainsString:_query]||[i[@"title"] localizedCaseInsensitiveContainsString:_query]||[i[@"subtitle"] localizedCaseInsensitiveContainsString:_query])[m addObject:i];}if(m.count){NSMutableDictionary*c=[g mutableCopy];c[@"items"]=m;[r addObject:c];}}return r;}
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{return self.visibleGroups.count?:1;}
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{return self.visibleGroups.count?[self.visibleGroups[section][@"items"]count]:1;}
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section{return self.visibleGroups.count?self.visibleGroups[section][@"name"]:nil;}
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {UITableViewCell*c=[tableView dequeueReusableCellWithIdentifier:@"AppShortcutCell"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"AppShortcutCell"];if(_loading){ABMCApplyLargeIcon(c,ABMCTintedIcon(@"arrow.clockwise",UIColor.secondaryLabelColor));c.textLabel.text=@"正在读取快捷方式…";c.detailTextLabel.text=@"";c.selectionStyle=UITableViewCellSelectionStyleNone;c.accessoryType=UITableViewCellAccessoryNone;return c;}if(!self.visibleGroups.count){ABMCApplyLargeIcon(c,ABMCTintedIcon(@"square.grid.2x2",UIColor.secondaryLabelColor));c.textLabel.text=@"未发现中文快捷方式";c.detailTextLabel.text=@"仅显示应用提供的中文快捷操作";c.selectionStyle=UITableViewCellSelectionStyleNone;c.accessoryType=UITableViewCellAccessoryNone;return c;}NSDictionary*g=self.visibleGroups[path.section],*i=g[@"items"][path.row];ABMCApplyLargeIcon(c,ABMCIconImageForBundleID(g[@"id"])?:ABMCTintedIcon(@"square.grid.2x2.fill",UIColor.systemBlueColor));c.textLabel.font=[UIFont systemFontOfSize:18];c.detailTextLabel.font=[UIFont systemFontOfSize:14];c.textLabel.text=i[@"title"];c.detailTextLabel.text=i[@"subtitle"];c.selectionStyle=UITableViewCellSelectionStyleDefault;NSString*a=[NSString stringWithFormat:@"appshortcut:%@|%@|%@",g[@"id"],i[@"type"],i[@"title"]];CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain);c.accessoryType=v&&[(__bridge NSString*)v isEqualToString:a]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;if(v)CFRelease(v);return c;}
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {if(_loading||!self.visibleGroups.count)return;NSDictionary*g=self.visibleGroups[path.section],*i=g[@"items"][path.row];NSString*a=[NSString stringWithFormat:@"appshortcut:%@|%@|%@",g[@"id"],i[@"type"],i[@"title"]];CFPreferencesSetAppValue((__bridge CFStringRef)_key,(__bridge CFPropertyListRef)a,Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),Changed,NULL,NULL,YES);[self.navigationController popViewControllerAnimated:YES];}
-- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text{_query=[text copy]?:@"";[UIView performWithoutAnimation:^{[self.tableView reloadData];}];}
+@implementation ABMCAppShortcutListController { NSString *_key,*_query;NSArray *_groups;BOOL _loading; }
+- (instancetype)initWithPreferenceKey:(NSString*)key{if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_key=[key copy];self.title=@"快捷方式";}return self;}
+- (void)viewDidLoad{[super viewDidLoad];_query=@"";self.tableView.rowHeight=64;UIView*h=[[UIView alloc]initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,68)];UISearchBar*s=[[UISearchBar alloc]initWithFrame:CGRectInset(h.bounds,8,6)];s.placeholder=@"搜索快捷方式";s.delegate=self;[h addSubview:s];self.tableView.tableHeaderView=h;self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(reloadShortcuts)];[self reloadShortcuts];}
+- (void)add:(NSArray*)raw to:(NSMutableArray*)items{for(id x in [raw isKindOfClass:NSArray.class]?raw:@[]){NSDictionary*d=[x isKindOfClass:NSDictionary.class]?x:nil;NSString*type=Call(x,@"type")?:d[@"UIApplicationShortcutItemType"];NSString*sourceTitle=Call(x,@"localizedTitle")?:Call(x,@"title")?:d[@"UIApplicationShortcutItemTitle"];NSString*subtitle=Call(x,@"localizedSubtitle")?:d[@"UIApplicationShortcutItemSubtitle"]?:@"";NSString*title=ChineseTitle(sourceTitle,type);if(!title.length&&type.length)title=[NSString stringWithFormat:@"快捷方式 %lu",(unsigned long)items.count+1];if(!type.length||!title.length)continue;BOOL found=NO;for(NSDictionary*old in items)if([old[@"type"]isEqual:type]){found=YES;break;}if(!found){NSMutableDictionary*item=[@{ @"type":type,@"title":title,@"subtitle":Chinese(subtitle)?subtitle:@"" }mutableCopy];if(!d)item[@"native"]=x;[items addObject:item];}}}
+- (NSArray*)serviceItems:(id)client bundle:(NSString*)bid{SEL s=NSSelectorFromString(@"applicationShortcutItemsOfTypes:forBundleIdentifier:");@try{id x=client&&[client respondsToSelector:s]?((id(*)(id,SEL,unsigned long long,id))objc_msgSend)(client,s,~0ULL,bid):nil;return[x isKindOfClass:NSArray.class]?x:@[];}@catch(NSException*e){return @[];}}
+- (void)reloadShortcuts{if(_loading)return;_loading=YES;NSArray*apps=[ABMCInstalledApplications() copy];dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{@autoreleasepool{dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices",RTLD_LAZY|RTLD_LOCAL);Class c=NSClassFromString(@"SBSApplicationClient");SEL out=NSSelectorFromString(@"checkOutClientWithClass:"),in=NSSelectorFromString(@"checkInClient:");id client=nil;@try{if([c respondsToSelector:out])client=((id(*)(id,SEL,id))objc_msgSend)(c,out,c);}@catch(NSException*e){}NSMutableArray*groups=[NSMutableArray array];for(id app in apps){NSString*bid=ABMCBundleIdentifierForApplication(app),*name=ABMCDisplayNameForApplication(app);if(!bid.length||!name.length)continue;NSMutableArray*items=[NSMutableArray array];[self add:Call(app,@"staticShortcutItems") to:items];NSURL*url=Call(app,@"bundleURL");[self add:[NSBundle bundleWithURL:url].infoDictionary[@"UIApplicationShortcutItems"] to:items];[self add:[self serviceItems:client bundle:bid] to:items];if(items.count)[groups addObject:@{ @"id":bid,@"name":name,@"items":items }];}if(client&&[c respondsToSelector:in])((void(*)(id,SEL,id))objc_msgSend)(c,in,client);[groups sortUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"]localizedCaseInsensitiveCompare:b[@"name"]];}];dispatch_async(dispatch_get_main_queue(),^{self->_groups=groups;self->_loading=NO;[UIView performWithoutAnimation:^{[self.tableView reloadData];}];});}});}
+- (NSArray*)visible{if(!_query.length)return _groups?:@[];NSMutableArray*out=[NSMutableArray array];for(NSDictionary*g in _groups){NSMutableArray*rows=[NSMutableArray array];for(NSDictionary*i in g[@"items"])if([g[@"name"]localizedCaseInsensitiveContainsString:_query]||[i[@"title"]localizedCaseInsensitiveContainsString:_query]||[i[@"subtitle"]localizedCaseInsensitiveContainsString:_query])[rows addObject:i];if(rows.count)[out addObject:@{ @"id":g[@"id"],@"name":g[@"name"],@"items":rows }];}return out;}
+- (NSInteger)numberOfSectionsInTableView:(UITableView*)t{return self.visible.count?:1;}
+- (NSInteger)tableView:(UITableView*)t numberOfRowsInSection:(NSInteger)s{return self.visible.count?[self.visible[s][@"items"]count]:1;}
+- (NSString*)tableView:(UITableView*)t titleForHeaderInSection:(NSInteger)s{return self.visible.count?self.visible[s][@"name"]:nil;}
+- (UITableViewCell*)tableView:(UITableView*)t cellForRowAtIndexPath:(NSIndexPath*)p{UITableViewCell*c=[t dequeueReusableCellWithIdentifier:@"AppShortcutCell"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"AppShortcutCell"];if(_loading){ABMCApplyLargeIcon(c,ABMCTintedIcon(@"arrow.clockwise",UIColor.secondaryLabelColor));c.textLabel.text=@"正在读取快捷方式…";c.detailTextLabel.text=@"";c.accessoryType=UITableViewCellAccessoryNone;c.selectionStyle=UITableViewCellSelectionStyleNone;return c;}if(!self.visible.count){ABMCApplyLargeIcon(c,ABMCTintedIcon(@"square.grid.2x2",UIColor.secondaryLabelColor));c.textLabel.text=@"未发现可用快捷方式";c.detailTextLabel.text=@"仅显示有中文名称的项目";c.accessoryType=UITableViewCellAccessoryNone;c.selectionStyle=UITableViewCellSelectionStyleNone;return c;}NSDictionary*g=self.visible[p.section],*i=g[@"items"][p.row];NSString*key=[NSString stringWithFormat:@"appshortcut.%@.%@",g[@"id"],i[@"type"]];NSString*token=ABMCDisplayIconToken(key,@"");UIImage*icon=token.length?(ABMCIconImageForBundleID(token)?:ABMCTintedIcon(token,UIColor.systemBlueColor)):ABMCAppShortcutIconImage(i[@"native"],g[@"id"]);ABMCApplyLargeIcon(c,icon?:ABMCIconImageForBundleID(g[@"id"])?:ABMCTintedIcon(@"square.grid.2x2.fill",UIColor.systemBlueColor));c.textLabel.font=[UIFont systemFontOfSize:18];c.detailTextLabel.font=[UIFont systemFontOfSize:14];c.textLabel.text=ABMCDisplayTitle(key,i[@"title"]);c.detailTextLabel.text=i[@"subtitle"];c.selectionStyle=UITableViewCellSelectionStyleDefault;NSString*a=[NSString stringWithFormat:@"appshortcut:%@|%@|%@",g[@"id"],i[@"type"],i[@"title"]];CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain);c.accessoryType=v&&[(__bridge NSString*)v isEqual:a]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;if(v)CFRelease(v);return c;}
+- (void)tableView:(UITableView*)t didSelectRowAtIndexPath:(NSIndexPath*)p{if(_loading||!self.visible.count)return;NSDictionary*g=self.visible[p.section],*i=g[@"items"][p.row];NSString*a=[NSString stringWithFormat:@"appshortcut:%@|%@|%@",g[@"id"],i[@"type"],i[@"title"]];CFPreferencesSetAppValue((__bridge CFStringRef)_key,(__bridge CFPropertyListRef)a,Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),Changed,NULL,NULL,YES);[self.navigationController popViewControllerAnimated:YES];}
+- (UISwipeActionsConfiguration *)tableView:(UITableView*)t trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath*)p{if(_loading||!self.visible.count)return nil;NSDictionary*g=self.visible[p.section],*i=g[@"items"][p.row];NSString*key=[NSString stringWithFormat:@"appshortcut.%@.%@",g[@"id"],i[@"type"]];UIContextualAction*edit=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"修改" handler:^(__unused UIContextualAction*a,__unused UIView*v,void(^done)(BOOL)){ABMCShowPresentationEditor(self,key,i[@"title"],g[@"id"],^{[self.tableView reloadData];done(YES);});}];edit.backgroundColor=UIColor.systemBlueColor;UIContextualAction*clear=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"清空" handler:^(__unused UIContextualAction*a,__unused UIView*v,void(^done)(BOOL)){ABMCClearPresentationOverride(key);[self.tableView reloadData];done(YES);}];clear.backgroundColor=UIColor.systemGrayColor;return[UISwipeActionsConfiguration configurationWithActions:@[clear,edit]];}
+- (void)searchBar:(UISearchBar*)s textDidChange:(NSString*)text{_query=[text copy]?:@"";[UIView performWithoutAnimation:^{[self.tableView reloadData];}];}
 @end

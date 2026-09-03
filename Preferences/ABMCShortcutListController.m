@@ -4,153 +4,34 @@
 
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCChanged CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged")
-
-static BOOL ABMCValidShortcutID(NSString *value) {
-    return [value isKindOfClass:[NSString class]] && [[NSUUID alloc] initWithUUIDString:value] != nil;
-}
-
-static BOOL ABMCContainsChinese(NSString *value) {
-    for (NSUInteger index = 0; index < value.length; index++) {
-        unichar c = [value characterAtIndex:index];
-        if (c >= 0x4E00 && c <= 0x9FFF) return YES;
-    }
-    return NO;
-}
+static NSString *Q(NSString *value) { return [@"\"" stringByAppendingString:[[value stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""] stringByAppendingString:@"\""]]; }
+static BOOL ValidID(NSString *value) { return [value isKindOfClass:NSString.class] && [[NSUUID alloc] initWithUUIDString:value] != nil; }
 
 @interface ABMCShortcutListController () <UISearchBarDelegate>
 @end
-
-@implementation ABMCShortcutListController {
-    NSString *_preferenceKey;
-    NSArray *_shortcuts;
-    NSString *_query;
+@implementation ABMCShortcutListController { NSString *_key,*_query; NSArray *_groups; BOOL _loading; }
+- (instancetype)initWithPreferenceKey:(NSString *)key { if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_key=[key copy];self.title=@"指令列表";}return self; }
+- (void)viewDidLoad { [super viewDidLoad];_query=@"";self.tableView.rowHeight=64;UIView *h=[[UIView alloc]initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,72)];UISearchBar *s=[[UISearchBar alloc]initWithFrame:CGRectInset(h.bounds,10,8)];s.placeholder=@"搜索全部快捷指令";s.delegate=self;[h addSubview:s];self.tableView.tableHeaderView=h;self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(reloadShortcuts)];[self reloadShortcuts]; }
+- (NSArray *)paths { return @[@"/private/var/mobile/Library/Shortcuts/Shortcuts.sqlite",@"/var/mobile/Library/Shortcuts/Shortcuts.sqlite",@"/private/var/mobile/Library/Shortcuts/Shortcuts.db",@"/var/mobile/Library/Shortcuts/Shortcuts.db"]; }
+- (NSArray *)tables:(sqlite3 *)db { sqlite3_stmt *s=NULL;NSMutableArray *r=[NSMutableArray array];if(sqlite3_prepare_v2(db,"SELECT name FROM sqlite_master WHERE type='table'",-1,&s,NULL)==SQLITE_OK)while(sqlite3_step(s)==SQLITE_ROW){const char*v=(const char*)sqlite3_column_text(s,0);if(v)[r addObject:[NSString stringWithUTF8String:v]];}if(s)sqlite3_finalize(s);return r; }
+- (NSArray *)columns:(sqlite3 *)db table:(NSString *)table { sqlite3_stmt*s=NULL;NSMutableArray*r=[NSMutableArray array];NSString*q=[NSString stringWithFormat:@"PRAGMA table_info(%@)",Q(table)];if(sqlite3_prepare_v2(db,q.UTF8String,-1,&s,NULL)==SQLITE_OK)while(sqlite3_step(s)==SQLITE_ROW){const char*v=(const char*)sqlite3_column_text(s,1);if(v)[r addObject:[NSString stringWithUTF8String:v]];}if(s)sqlite3_finalize(s);return r; }
+- (NSDictionary *)folders:(sqlite3 *)db tables:(NSArray *)tables shortcutColumns:(NSArray *)columns {
+    NSString *reference=nil;for(NSString*c in columns)if([c.uppercaseString containsString:@"FOLDER"]){reference=c;break;}if(!reference)return @{};
+    for(NSString *table in tables){if(![[table uppercaseString] containsString:@"FOLDER"])continue;NSArray*fc=[self columns:db table:table];NSString *pk=nil,*name=nil;for(NSString*c in fc){if([c.uppercaseString isEqualToString:@"Z_PK"])pk=c;if([c.uppercaseString isEqualToString:@"ZNAME"]||[c.uppercaseString isEqualToString:@"ZTITLE"])name=c;}if(!pk||!name)continue;
+        NSString *sql=[NSString stringWithFormat:@"SELECT s.ZWORKFLOWID,f.%@ FROM ZSHORTCUT s LEFT JOIN %@ f ON s.%@=f.%@ WHERE f.%@ IS NOT NULL",Q(name),Q(table),Q(reference),Q(pk),Q(name)];sqlite3_stmt*s=NULL;NSMutableDictionary*r=[NSMutableDictionary dictionary];if(sqlite3_prepare_v2(db,sql.UTF8String,-1,&s,NULL)==SQLITE_OK)while(sqlite3_step(s)==SQLITE_ROW){const char*i=(const char*)sqlite3_column_text(s,0),*n=(const char*)sqlite3_column_text(s,1);if(i&&n){NSString*k=[[NSString stringWithUTF8String:i]uppercaseString],*v=[[NSString stringWithUTF8String:n]stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];if(k.length&&v.length)r[k]=v;}}if(s)sqlite3_finalize(s);if(r.count)return r;
+    } return @{};
 }
-
-- (instancetype)initWithPreferenceKey:(NSString *)key {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        _preferenceKey = [key copy];
-        self.title = @"指令列表";
-    }
-    return self;
+- (void)read:(NSString *)path into:(NSMutableDictionary *)results folders:(NSMutableDictionary *)folderNames {
+    sqlite3 *db=NULL;if(sqlite3_open_v2(path.fileSystemRepresentation,&db,SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX,NULL)!=SQLITE_OK){if(db)sqlite3_close(db);return;}sqlite3_busy_timeout(db,300);NSArray*tables=[self tables:db],*columns=[self columns:db table:@"ZSHORTCUT"];if(![tables containsObject:@"ZSHORTCUT"]||![columns containsObject:@"ZNAME"]||![columns containsObject:@"ZWORKFLOWID"]){sqlite3_close(db);return;}[folderNames addEntriesFromDictionary:[self folders:db tables:tables shortcutColumns:columns]];
+    BOOL icon=[tables containsObject:@"ZSHORTCUTICON"]&&[columns containsObject:@"ZICON"];BOOL hidden=[columns containsObject:@"ZHIDDENFROMLIBRARYANDSYNC"], tomb=[columns containsObject:@"ZTOMBSTONED"];NSMutableString *sql=[NSMutableString stringWithString:icon?@"SELECT s.ZNAME,s.ZWORKFLOWID,COALESCE(i.ZGLYPHNUMBER,0),COALESCE(i.ZBACKGROUNDCOLORVALUE,0) FROM ZSHORTCUT s LEFT JOIN ZSHORTCUTICON i ON i.Z_PK=s.ZICON WHERE s.ZNAME IS NOT NULL AND s.ZWORKFLOWID IS NOT NULL ":@"SELECT s.ZNAME,s.ZWORKFLOWID,0,0 FROM ZSHORTCUT s WHERE s.ZNAME IS NOT NULL AND s.ZWORKFLOWID IS NOT NULL "];
+    if(tomb)[sql appendString:@"AND COALESCE(s.ZTOMBSTONED,0)=0 "];if(hidden)[sql appendString:@"AND COALESCE(s.ZHIDDENFROMLIBRARYANDSYNC,0)=0 "];sqlite3_stmt*s=NULL;if(sqlite3_prepare_v2(db,sql.UTF8String,-1,&s,NULL)==SQLITE_OK)while(sqlite3_step(s)==SQLITE_ROW){const char*n=(const char*)sqlite3_column_text(s,0),*i=(const char*)sqlite3_column_text(s,1);if(!n||!i)continue;NSString*name=[[NSString stringWithUTF8String:n]stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet],*identifier=[[NSString stringWithUTF8String:i]uppercaseString];if(name.length&&ValidID(identifier))results[identifier]=@{ @"name":name,@"identifier":identifier,@"glyph":@(sqlite3_column_int64(s,2)),@"color":@(sqlite3_column_int64(s,3)) };}if(s)sqlite3_finalize(s);sqlite3_close(db);
 }
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    _query = @"";
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 72)];
-    UISearchBar *search = [[UISearchBar alloc] initWithFrame:CGRectInset(header.bounds, 10, 8)];
-    search.placeholder = @"搜索全部快捷指令";
-    search.delegate = self;
-    [header addSubview:search];
-    self.tableView.tableHeaderView = header;
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(reloadShortcuts)];
-    [self reloadShortcuts];
-}
-
-- (NSArray *)databasePaths {
-    return @[
-        @"/private/var/mobile/Library/Shortcuts/Shortcuts.sqlite",
-        @"/var/mobile/Library/Shortcuts/Shortcuts.sqlite",
-        @"/private/var/mobile/Library/Shortcuts/Shortcuts.db",
-        @"/var/mobile/Library/Shortcuts/Shortcuts.db"
-    ];
-}
-
-- (BOOL)columnExists:(sqlite3 *)database name:(NSString *)column {
-    sqlite3_stmt *statement = NULL;
-    BOOL found = NO;
-    if (sqlite3_prepare_v2(database, "PRAGMA table_info(ZSHORTCUT)", -1, &statement, NULL) == SQLITE_OK) {
-        while (sqlite3_step(statement) == SQLITE_ROW) {
-            const char *raw = (const char *)sqlite3_column_text(statement, 1);
-            if (raw && [[[NSString stringWithUTF8String:raw] uppercaseString] isEqualToString:column]) { found = YES; break; }
-        }
-    }
-    if (statement) sqlite3_finalize(statement);
-    return found;
-}
-
-- (void)readDatabase:(NSString *)path into:(NSMutableDictionary *)results {
-    sqlite3 *database = NULL;
-    if (sqlite3_open_v2(path.fileSystemRepresentation, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, NULL) != SQLITE_OK) {
-        if (database) sqlite3_close(database);
-        return;
-    }
-    sqlite3_busy_timeout(database, 1000);
-    // 所有快捷指令的权威数据：ZSHORTCUT.ZNAME 与 ZWORKFLOWID。
-    // 不查询 ZWORKFLOW、图标或关联表，避免名称/UUID 错配。
-    if (![self columnExists:database name:@"ZNAME"] || ![self columnExists:database name:@"ZWORKFLOWID"]) { sqlite3_close(database); return; }
-    BOOL hasTombstone = [self columnExists:database name:@"ZTOMBSTONED"];
-    BOOL hasHidden = [self columnExists:database name:@"ZHIDDENFROMLIBRARYANDSYNC"];
-    NSMutableString *query = [@"SELECT ZNAME,ZWORKFLOWID FROM ZSHORTCUT WHERE ZNAME IS NOT NULL AND length(trim(ZNAME)) > 0 AND ZWORKFLOWID IS NOT NULL AND length(ZWORKFLOWID) > 0 " mutableCopy];
-    if (hasTombstone) [query appendString:@"AND COALESCE(ZTOMBSTONED,0) = 0 "];
-    if (hasHidden) [query appendString:@"AND COALESCE(ZHIDDENFROMLIBRARYANDSYNC,0) = 0 "];
-    sqlite3_stmt *statement = NULL;
-    if (sqlite3_prepare_v2(database, query.UTF8String, -1, &statement, NULL) == SQLITE_OK) {
-        while (sqlite3_step(statement) == SQLITE_ROW) {
-            const char *rawName = (const char *)sqlite3_column_text(statement, 0);
-            const char *rawID = (const char *)sqlite3_column_text(statement, 1);
-            if (!rawName || !rawID) continue;
-            NSString *name = [[NSString stringWithUTF8String:rawName] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-            NSString *identifier = [[NSString stringWithUTF8String:rawID] uppercaseString];
-            if (name.length && ABMCContainsChinese(name) && ABMCValidShortcutID(identifier)) results[identifier] = @{ @"name": name, @"identifier": identifier };
-        }
-    }
-    if (statement) sqlite3_finalize(statement);
-    sqlite3_close(database);
-}
-
-- (void)reloadShortcuts {
-    NSMutableDictionary *results = [NSMutableDictionary dictionary];
-    for (NSString *path in self.databasePaths) [self readDatabase:path into:results];
-    _shortcuts = [[results allValues] sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
-        return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];
-    }];
-    [self.tableView reloadData];
-}
-
-- (NSArray *)visibleShortcuts {
-    if (!_query.length) return _shortcuts ?: @[];
-    NSPredicate *filter = [NSPredicate predicateWithBlock:^BOOL(NSDictionary *item, NSDictionary *bindings) {
-        return [item[@"name"] localizedCaseInsensitiveContainsString:self->_query] || [item[@"identifier"] localizedCaseInsensitiveContainsString:self->_query];
-    }];
-    return [_shortcuts filteredArrayUsingPredicate:filter];
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.visibleShortcuts.count ?: 1; }
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ShortcutCell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ShortcutCell"];
-    NSArray *items = self.visibleShortcuts;
-    if (!items.count) {
-        cell.imageView.image = ABMCTintedIcon(@"exclamationmark.circle", UIColor.secondaryLabelColor);
-        cell.textLabel.text = @"未读取到快捷指令";
-        cell.detailTextLabel.text = @"请打开一次快捷指令 App 后刷新";
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        cell.accessoryType = UITableViewCellAccessoryNone;
-        return cell;
-    }
-    NSDictionary *item = items[path.row];
-    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    // Fixed system Shortcuts icon: stable while scrolling and avoids expensive
-    // per-row WorkflowKit database/icon rendering.
-    ABMCApplyLargeIcon(cell, ABMCTintedIcon(@"square.stack.3d.up.fill", UIColor.systemBlueColor));
-    cell.textLabel.font = [UIFont systemFontOfSize:18];
-    cell.detailTextLabel.text = nil;
-    cell.textLabel.text = item[@"name"];
-    NSString *action = [NSString stringWithFormat:@"shortcutid:%@|%@", item[@"identifier"], item[@"name"]];
-    CFStringRef current = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain);
-    cell.accessoryType = current && [(__bridge NSString *)current isEqualToString:action] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    if (current) CFRelease(current);
-    return cell;
-}
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
-    NSArray *items = self.visibleShortcuts;
-    if (!items.count) return;
-    NSDictionary *item = items[path.row];
-    NSString *action = [NSString stringWithFormat:@"shortcutid:%@|%@", item[@"identifier"], item[@"name"]];
-    CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, ABMCDomain);
-    CFPreferencesAppSynchronize(ABMCDomain);
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES);
-    [self.navigationController popViewControllerAnimated:YES];
-}
-- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text { _query = [text copy] ?: @""; [self.tableView reloadData]; }
+- (void)reloadShortcuts { if(_loading)return;_loading=YES;dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{@autoreleasepool{NSMutableDictionary*items=[NSMutableDictionary dictionary],*folders=[NSMutableDictionary dictionary];for(NSString*p in self.paths)[self read:p into:items folders:folders];NSMutableDictionary*grouped=[NSMutableDictionary dictionary];for(NSString*identifier in items){NSString*folder=folders[identifier]?:@"未分组";if(!grouped[folder])grouped[folder]=[NSMutableArray array];[grouped[folder] addObject:items[identifier]];}NSMutableArray*groups=[NSMutableArray array];for(NSString*folder in grouped){NSArray*rows=[grouped[folder] sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"]localizedCaseInsensitiveCompare:b[@"name"]];}];[groups addObject:@{ @"name":folder,@"items":rows }];}[groups sortUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){if([a[@"name"]isEqual:@"未分组"])return NSOrderedDescending;if([b[@"name"]isEqual:@"未分组"])return NSOrderedAscending;return[a[@"name"]localizedCaseInsensitiveCompare:b[@"name"]];}];dispatch_async(dispatch_get_main_queue(),^{self->_groups=groups;self->_loading=NO;[UIView performWithoutAnimation:^{[self.tableView reloadData];}];});}}); }
+- (NSArray *)visible { if(!_query.length)return _groups?:@[];NSMutableArray*out=[NSMutableArray array];for(NSDictionary*g in _groups){NSMutableArray*rows=[NSMutableArray array];for(NSDictionary*i in g[@"items"])if([g[@"name"]localizedCaseInsensitiveContainsString:_query]||[i[@"name"]localizedCaseInsensitiveContainsString:_query])[rows addObject:i];if(rows.count)[out addObject:@{ @"name":g[@"name"],@"items":rows }];}return out; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{return self.visible.count?:1;}
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{return self.visible.count?[self.visible[section][@"items"]count]:1;}
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section{return self.visible.count?self.visible[section][@"name"]:nil;}
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {UITableViewCell*c=[tableView dequeueReusableCellWithIdentifier:@"ShortcutCell"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ShortcutCell"];if(_loading){ABMCApplyLargeIcon(c,ABMCTintedIcon(@"arrow.clockwise",UIColor.secondaryLabelColor));c.textLabel.text=@"正在读取指令列表…";c.detailTextLabel.text=@"";c.accessoryType=UITableViewCellAccessoryNone;c.selectionStyle=UITableViewCellSelectionStyleNone;return c;}if(!self.visible.count){ABMCApplyLargeIcon(c,ABMCTintedIcon(@"exclamationmark.circle",UIColor.secondaryLabelColor));c.textLabel.text=@"未读取到快捷指令";c.detailTextLabel.text=@"请打开一次快捷指令 App 后刷新";c.accessoryType=UITableViewCellAccessoryNone;c.selectionStyle=UITableViewCellSelectionStyleNone;return c;}NSDictionary*i=self.visible[path.section][@"items"][path.row];ABMCApplyLargeIcon(c,ABMCWorkflowIconImage([i[@"glyph"]integerValue],[i[@"color"]longLongValue])?:ABMCTintedIcon(@"square.stack.3d.up.fill",UIColor.systemBlueColor));c.textLabel.font=[UIFont systemFontOfSize:18];c.detailTextLabel.text=nil;c.textLabel.text=i[@"name"];c.selectionStyle=UITableViewCellSelectionStyleDefault;NSString*a=[NSString stringWithFormat:@"shortcutid:%@|%@",i[@"identifier"],i[@"name"]];CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,ABMCDomain);c.accessoryType=v&&[(__bridge NSString*)v isEqual:a]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;if(v)CFRelease(v);return c;}
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {if(!self.visible.count)return;NSDictionary*i=self.visible[path.section][@"items"][path.row];NSString*a=[NSString stringWithFormat:@"shortcutid:%@|%@",i[@"identifier"],i[@"name"]];CFPreferencesSetAppValue((__bridge CFStringRef)_key,(__bridge CFPropertyListRef)a,ABMCDomain);CFPreferencesAppSynchronize(ABMCDomain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),ABMCChanged,NULL,NULL,YES);[self.navigationController popViewControllerAnimated:YES];}
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text{_query=[text copy]?:@"";[UIView performWithoutAnimation:^{[self.tableView reloadData];}];}
 @end

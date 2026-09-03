@@ -67,8 +67,8 @@
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ApplicationCell"];
     NSDictionary *item = self.visibleApplications[indexPath.row];
     NSString *identifier = item[@"id"];
-    // Render synchronously from the bounded cache: no delayed icon replacement,
-    // so selection/scrolling never changes the row's layout or icon position.
+    // Application entries intentionally retain their real app name and icon.
+    // They are not presentation-editable by design.
     ABMCApplyLargeIcon(cell, ABMCIconImageForBundleID(identifier) ?: ABMCTintedIcon(@"app.badge.checkmark", UIColor.systemBlueColor));
     cell.textLabel.font = [UIFont systemFontOfSize:18.0];
     cell.detailTextLabel.font = [UIFont systemFontOfSize:14.0];

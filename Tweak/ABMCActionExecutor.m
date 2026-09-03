@@ -12,6 +12,7 @@
 - (void)openSavedLink:(NSString *)linkID;
 - (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen;
 - (BOOL)launchAppThroughHomeScreenIcon:(NSString *)bundleID;
+- (id)cachedAppShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
 - (void)runShortcut:(NSString *)name;
@@ -357,20 +358,28 @@ BOOL ABMCPerformingDefaultAction = NO;
 #pragma mark - Open App
 
 - (BOOL)launchAppThroughHomeScreenIcon:(NSString *)bundleID {
-    // FV hooks SpringBoard's normal icon-launch route. Never use
-    // LSApplicationWorkspace as a fallback here: it bypasses FV and can block
-    // SpringBoard waiting for a service reply.
+    // Use SBHIconManager's real launch API. The previous
+    // iconModel:launchIcon: call was a delegate callback, not an activation.
+    // This is the same SpringBoard icon-launch pipeline that FV can hook.
     @try {
         Class controllerClass = NSClassFromString(@"SBIconController");
         SEL shared = NSSelectorFromString(@"sharedInstance");
         id controller = [controllerClass respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(controllerClass, shared) : nil;
         id manager = [controller respondsToSelector:NSSelectorFromString(@"iconManager")] ? ((id (*)(id, SEL))objc_msgSend)(controller, NSSelectorFromString(@"iconManager")) : nil;
         id model = [manager respondsToSelector:NSSelectorFromString(@"iconModel")] ? ((id (*)(id, SEL))objc_msgSend)(manager, NSSelectorFromString(@"iconModel")) : nil;
-        SEL iconForBundle = NSSelectorFromString(@"applicationIconForBundleIdentifier:");
-        id icon = [model respondsToSelector:iconForBundle] ? ((id (*)(id, SEL, id))objc_msgSend)(model, iconForBundle, bundleID) : nil;
-        SEL launch = NSSelectorFromString(@"iconModel:launchIcon:fromLocation:context:");
-        if (icon && [manager respondsToSelector:launch]) {
-            ((void (*)(id, SEL, id, id, id, id))objc_msgSend)(manager, launch, model, icon, nil, nil);
+        SEL findIcon = NSSelectorFromString(@"applicationIconForBundleIdentifier:");
+        id icon = [model respondsToSelector:findIcon] ? ((id (*)(id, SEL, id))objc_msgSend)(model, findIcon, bundleID) : nil;
+        Class iconViewClass = NSClassFromString(@"SBIconView");
+        SEL defaultLocation = NSSelectorFromString(@"defaultIconLocation");
+        id location = [iconViewClass respondsToSelector:defaultLocation] ? ((id (*)(id, SEL))objc_msgSend)(iconViewClass, defaultLocation) : nil;
+        SEL iconViewForIcon = NSSelectorFromString(@"iconViewForIcon:location:");
+        id iconView = (icon && [manager respondsToSelector:iconViewForIcon]) ? ((id (*)(id, SEL, id, id))objc_msgSend)(manager, iconViewForIcon, icon, location) : nil;
+        // Enter the same handler used by an actual finger tap. This preserves
+        // FV's SBIconView interception point; direct workspace/manager launch
+        // calls bypass that hook and force an ordinary full-screen launch.
+        SEL tap = NSSelectorFromString(@"_handleTap");
+        if (iconView && [iconView respondsToSelector:tap]) {
+            ((void (*)(id, SEL))objc_msgSend)(iconView, tap);
             return YES;
         }
     } @catch (NSException *exception) {}
@@ -470,6 +479,27 @@ BOOL ABMCPerformingDefaultAction = NO;
     });
 }
 
+- (id)cachedAppShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
+    // Ask SpringBoard's already-resident SBApplication for its dynamic items.
+    // It reads SBApplicationShortcutStoreManager with the app's real version,
+    // avoiding both a stale version=0 cache lookup and any click-time XPC.
+    @try {
+        Class controllerClass = NSClassFromString(@"SBIconController");
+        SEL shared = NSSelectorFromString(@"sharedInstance");
+        id controller = [controllerClass respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(controllerClass, shared) : nil;
+        id appController = [controller respondsToSelector:NSSelectorFromString(@"applicationController")] ? ((id (*)(id, SEL))objc_msgSend)(controller, NSSelectorFromString(@"applicationController")) : nil;
+        SEL applicationForID = NSSelectorFromString(@"applicationWithBundleIdentifier:");
+        id application = [appController respondsToSelector:applicationForID] ? ((id (*)(id, SEL, id))objc_msgSend)(appController, applicationForID, bundleIdentifier) : nil;
+        NSArray *items = [application respondsToSelector:NSSelectorFromString(@"dynamicApplicationShortcutItems")] ? ((id (*)(id, SEL))objc_msgSend)(application, NSSelectorFromString(@"dynamicApplicationShortcutItems")) : nil;
+        SEL itemType = NSSelectorFromString(@"type");
+        for (id item in [items isKindOfClass:NSArray.class] ? items : @[]) {
+            NSString *candidate = [item respondsToSelector:itemType] ? ((id (*)(id, SEL))objc_msgSend)(item, itemType) : nil;
+            if ([candidate isEqualToString:type]) return item;
+        }
+    } @catch (NSException *exception) {}
+    return nil;
+}
+
 - (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
     // Never synchronously query SpringBoardServices here: this method runs in
     // SpringBoard and that XPC route caused the Watchdog termination reported.
@@ -502,7 +532,7 @@ BOOL ABMCPerformingDefaultAction = NO;
     if (!bundleIdentifier.length || !type.length) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            id target = [self appShortcutItemForBundleIdentifier:bundleIdentifier type:type];
+            id target = [self cachedAppShortcutItemForBundleIdentifier:bundleIdentifier type:type] ?: [self appShortcutItemForBundleIdentifier:bundleIdentifier type:type];
             Class iconView = NSClassFromString(@"SBIconView");
             SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
             if (target && [iconView respondsToSelector:activate]) ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconView, activate, target, bundleIdentifier, nil);

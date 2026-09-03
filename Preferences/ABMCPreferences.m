@@ -97,6 +97,17 @@ static NSString *titleForActionID(NSString *actionID) {
         [longPress setProperty:ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor) forKey:@"iconImage"];
         [specs addObject:longPress];
 
+        PSSpecifier *appearanceGroup = [PSSpecifier groupSpecifierWithName:@"全局外观"];
+        [appearanceGroup setProperty:@"开启后，所有图标使用同一视觉画布。分组、基础动作、已选动作、快捷方式和 URL 可左滑修改或清空；应用列表与指令列表始终保留原名称和原图标。" forKey:@"footerText"];
+        [specs addObject:appearanceGroup];
+        PSSpecifier *unifiedIcons = [PSSpecifier preferenceSpecifierNamed:@"统一图标大小" target:self set:@selector(setOpenMode:specifier:) get:@selector(openModeForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
+        [unifiedIcons setProperty:@"unifiedIconSizing" forKey:@"key"];
+        [unifiedIcons setProperty:@"unifiedIconSizing" forKey:@"id"];
+        [unifiedIcons setProperty:PREFS_DOMAIN forKey:@"defaults"];
+        [unifiedIcons setProperty:@YES forKey:@"default"];
+        [unifiedIcons setProperty:ABMCTintedIcon(@"arrow.up.left.and.arrow.down.right", UIColor.systemBlueColor) forKey:@"iconImage"];
+        [specs addObject:unifiedIcons];
+
         PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"启动方式"];
         [launchGroup setProperty:@"开启时优先由系统全屏执行；关闭时使用兼容启动路线，供 FV 等分屏插件接管。快捷指令始终优先后台直接运行，只有后台接口不可用才使用后备启动方式。" forKey:@"footerText"];
         [specs addObject:launchGroup];
@@ -167,10 +178,11 @@ static NSString *titleForActionID(NSString *actionID) {
             CFPreferencesAppSynchronize((__bridge CFStringRef)PREFS_DOMAIN);
             CFStringRef val = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)key, (__bridge CFStringRef)PREFS_DOMAIN);
             NSString *actionID = val ? (__bridge_transfer NSString *)val : [spec propertyForKey:@"default"];
-            [spec setProperty:titleForActionID(actionID) forKey:@"cellValue"];
+            NSString *title = titleForActionID(actionID);
+            [spec setProperty:ABMCDisplayTitle([@"action." stringByAppendingString:actionID ?: @"none"], title) forKey:@"cellValue"];
         }
     }
-    for (NSString *identifier in @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode"]) [self reloadSpecifierID:identifier];
+    for (NSString *identifier in @[@"unifiedIconSizing", @"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode"]) [self reloadSpecifierID:identifier];
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];

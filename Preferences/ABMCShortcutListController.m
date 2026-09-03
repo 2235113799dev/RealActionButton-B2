@@ -3,6 +3,7 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 #import <sqlite3.h>
+#import <uuid/uuid.h>
 
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCChanged CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged")
@@ -27,6 +28,7 @@ static NSString *ABMCObjectValue(id object, NSArray<NSString *> *names) {
 - (void)addWorkflow:(id)workflow to:(NSMutableDictionary *)results;
 - (void)readWorkflowObject:(id)object into:(NSMutableDictionary *)results;
 - (void)readShortcutsDatabaseInto:(NSMutableDictionary *)results;
+- (NSArray *)shortcutDatabasePaths;
 @end
 
 @implementation ABMCShortcutListController {
@@ -96,8 +98,32 @@ static NSString *ABMCObjectValue(id object, NSArray<NSString *> *names) {
     [self.tableView reloadData];
 }
 
+- (NSArray *)shortcutDatabasePaths {
+    NSMutableArray *paths = [@[
+        @"/var/mobile/Library/Shortcuts/Shortcuts.sqlite", @"/private/var/mobile/Library/Shortcuts/Shortcuts.sqlite",
+        @"/var/mobile/Library/Shortcuts/Shortcuts.db", @"/private/var/mobile/Library/Shortcuts/Shortcuts.db"
+    ] mutableCopy];
+    @try {
+        Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+        SEL shared = NSSelectorFromString(@"defaultWorkspace"), proxyForID = NSSelectorFromString(@"applicationProxyForBundleIdentifier:");
+        id workspace = workspaceClass && [workspaceClass respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, shared) : nil;
+        id proxy = workspace && [workspace respondsToSelector:proxyForID] ? ((id (*)(id, SEL, id))objc_msgSend)(workspace, proxyForID, @"is.workflow.my.app") : nil;
+        for (NSString *selectorName in @[@"dataContainerURL", @"dataContainerURLForSecurityApplicationGroupIdentifier:"]) {
+            SEL selector = NSSelectorFromString(selectorName);
+            id URL = nil;
+            if ([proxy respondsToSelector:selector] && [selectorName isEqualToString:@"dataContainerURL"]) URL = ((id (*)(id, SEL))objc_msgSend)(proxy, selector);
+            if ([URL isKindOfClass:[NSURL class]]) {
+                NSString *base = [URL path];
+                [paths addObject:[base stringByAppendingPathComponent:@"Library/Shortcuts/Shortcuts.sqlite"]];
+                [paths addObject:[base stringByAppendingPathComponent:@"Library/Application Support/Shortcuts/Shortcuts.sqlite"]];
+            }
+        }
+    } @catch (NSException *exception) {}
+    return [[NSOrderedSet orderedSetWithArray:paths] array];
+}
+
 - (void)readShortcutsDatabaseInto:(NSMutableDictionary *)results {
-    NSArray *paths = @[@"/var/mobile/Library/Shortcuts/Shortcuts.sqlite", @"/private/var/mobile/Library/Shortcuts/Shortcuts.sqlite", @"/var/mobile/Library/Shortcuts/Shortcuts.db", @"/private/var/mobile/Library/Shortcuts/Shortcuts.db"];
+    NSArray *paths = [self shortcutDatabasePaths];
     for (NSString *path in paths) {
         sqlite3 *db = NULL;
         if (sqlite3_open_v2(path.fileSystemRepresentation, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) { if (db) sqlite3_close(db); continue; }
@@ -113,12 +139,21 @@ static NSString *ABMCObjectValue(id object, NSArray<NSString *> *names) {
                 while (sqlite3_step(rows) == SQLITE_ROW) {
                     NSString *name = nil, *identifier = nil;
                     for (int index = 0; index < count; index++) {
-                        const char *column = sqlite3_column_name(rows, index); const unsigned char *text = sqlite3_column_text(rows, index);
-                        if (!column || !text) continue;
+                        const char *column = sqlite3_column_name(rows, index);
+                        if (!column) continue;
                         NSString *field = [NSString stringWithUTF8String:column].lowercaseString;
-                        NSString *value = [NSString stringWithUTF8String:(const char *)text];
-                        if (!name && ([field containsString:@"name"] || [field containsString:@"title"])) name = value;
-                        if (!identifier && ([field containsString:@"identifier"] || [field containsString:@"uuid"])) identifier = value;
+                        int type = sqlite3_column_type(rows, index);
+                        const unsigned char *text = sqlite3_column_text(rows, index);
+                        NSString *value = text ? [NSString stringWithUTF8String:(const char *)text] : nil;
+                        if (!name && value.length && ([field containsString:@"name"] || [field containsString:@"title"])) name = value;
+                        if (!identifier && ([field containsString:@"identifier"] || [field containsString:@"uuid"])) {
+                            if (value.length) identifier = value;
+                            else if (type == SQLITE_BLOB && sqlite3_column_bytes(rows, index) == 16) {
+                                const unsigned char *bytes = sqlite3_column_blob(rows, index);
+                                uuid_t uuid; memcpy(uuid, bytes, 16);
+                                identifier = [[NSUUID alloc] initWithUUIDBytes:uuid].UUIDString;
+                            }
+                        }
                     }
                     if (name.length && ABMCValidWorkflowID(identifier)) results[identifier.uppercaseString] = @{ @"name": name, @"identifier": identifier.uppercaseString };
                 }

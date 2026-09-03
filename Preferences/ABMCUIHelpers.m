@@ -6,22 +6,58 @@ static id ABMCValue(id object, NSString *selectorName) {
     return object && [object respondsToSelector:selector] ? ((id (*)(id, SEL))objc_msgSend)(object, selector) : nil;
 }
 
+static id ABMCProxyForBundleID(NSString *bundleID) {
+    Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+    id workspace = ABMCValue(workspaceClass, @"defaultWorkspace");
+    SEL selector = NSSelectorFromString(@"applicationProxyForBundleIdentifier:");
+    return workspace && [workspace respondsToSelector:selector] ? ((id (*)(id, SEL, id))objc_msgSend)(workspace, selector, bundleID) : nil;
+}
+
+static UIImage *ABMCProxyIcon(id proxy) {
+    if (!proxy) return nil;
+    for (NSString *method in @[@"icon", @"primaryIcon", @"applicationIcon"]) {
+        id image = ABMCValue(proxy, method);
+        if ([image isKindOfClass:[UIImage class]]) return image;
+    }
+    for (NSString *method in @[@"iconData", @"primaryIconData"]) {
+        id data = ABMCValue(proxy, method);
+        if ([data isKindOfClass:[NSData class]] && [data length]) {
+            UIImage *image = [UIImage imageWithData:data];
+            if (image) return image;
+        }
+    }
+    SEL variant = NSSelectorFromString(@"iconDataForVariant:");
+    if ([proxy respondsToSelector:variant]) {
+        NSData *data = ((id (*)(id, SEL, NSInteger))objc_msgSend)(proxy, variant, 0);
+        UIImage *image = [data isKindOfClass:[NSData class]] ? [UIImage imageWithData:data] : nil;
+        if (image) return image;
+    }
+    return nil;
+}
+
 UIImage *ABMCIconImage(NSString *token) {
-    UIImage *symbol = token.length ? [UIImage systemImageNamed:token] : nil;
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:22.0 weight:UIImageSymbolWeightMedium];
+    UIImage *symbol = token.length ? [UIImage systemImageNamed:token withConfiguration:config] : nil;
     if (symbol) return symbol;
     @try {
-        Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-        id workspace = ABMCValue(workspaceClass, @"defaultWorkspace");
-        SEL proxySelector = NSSelectorFromString(@"applicationProxyForBundleIdentifier:");
-        id proxy = workspace && [workspace respondsToSelector:proxySelector] ? ((id (*)(id, SEL, id))objc_msgSend)(workspace, proxySelector, token) : nil;
-        id image = ABMCValue(proxy, @"icon");
-        if ([image isKindOfClass:[UIImage class]]) return image;
+        id proxy = ABMCProxyForBundleID(token);
+        UIImage *icon = ABMCProxyIcon(proxy);
+        if (icon) return icon;
+        Class applicationClass = NSClassFromString(@"UIApplication");
+        id app = [applicationClass respondsToSelector:@selector(sharedApplication)] ? [applicationClass sharedApplication] : nil;
+        SEL imageSelector = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
+        if (app && [app respondsToSelector:imageSelector]) {
+            icon = ((id (*)(id, SEL, id, NSInteger, CGFloat))objc_msgSend)(app, imageSelector, token, 2, UIScreen.mainScreen.scale);
+            if ([icon isKindOfClass:[UIImage class]]) return icon;
+        }
     } @catch (NSException *exception) {}
-    return [UIImage systemImageNamed:@"app.fill"];
+    return [UIImage systemImageNamed:@"app.fill" withConfiguration:config];
 }
 
 UIImage *ABMCTintedIcon(NSString *token, UIColor *color) {
-    return [ABMCIconImage(token) imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal];
+    UIImage *image = ABMCIconImage(token);
+    // SF Symbol 使用统一蓝色；真实应用图标保持原始彩色。
+    return [UIImage systemImageNamed:token] ? [image imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal] : image;
 }
 
 NSString *ABMCInferLinkIcon(NSString *URLString) {
@@ -37,11 +73,7 @@ NSString *ABMCInferLinkIcon(NSString *URLString) {
 NSString *ABMCApplicationName(NSString *bundleID) {
     if (!bundleID.length) return @"未知应用";
     @try {
-        Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-        id workspace = ABMCValue(workspaceClass, @"defaultWorkspace");
-        SEL proxySelector = NSSelectorFromString(@"applicationProxyForBundleIdentifier:");
-        id proxy = workspace && [workspace respondsToSelector:proxySelector] ? ((id (*)(id, SEL, id))objc_msgSend)(workspace, proxySelector, bundleID) : nil;
-        id name = ABMCValue(proxy, @"localizedName");
+        id name = ABMCValue(ABMCProxyForBundleID(bundleID), @"localizedName");
         if ([name isKindOfClass:[NSString class]] && [name length]) return name;
     } @catch (NSException *exception) {}
     return bundleID;
@@ -54,15 +86,9 @@ BOOL ABMCIsAllowedStoreApplicationProxy(id proxy) {
         NSURL *bundleURL = ABMCValue(proxy, @"bundleURL");
         NSString *path = bundleURL.path;
         NSString *type = ABMCValue(proxy, @"applicationType");
-        NSNumber *itemID = ABMCValue(proxy, @"itemID");
-        BOOL isUserContainer = [path hasPrefix:@"/var/containers/Bundle/Application/"] || [path hasPrefix:@"/private/var/containers/Bundle/Application/"];
-        if (!bundleID.length || ![path.pathExtension.lowercaseString isEqualToString:@"app"]) return NO;
-        if (![type isEqualToString:@"User"] || !isUserContainer || itemID.longLongValue <= 0) return NO;
-        for (NSString *fragment in @[@"Service", @"service", @"UIService", @"Helper", @"Widget", @"appex", @"/PlugIns/", @"/Extensions/"]) {
-            if ([path containsString:fragment]) return NO;
-        }
-        return YES;
-    } @catch (NSException *exception) {
-        return NO;
-    }
+        BOOL userContainer = [path hasPrefix:@"/var/containers/Bundle/Application/"] || [path hasPrefix:@"/private/var/containers/Bundle/Application/"];
+        if (!bundleID.length || ![path.pathExtension.lowercaseString isEqualToString:@"app"] || ![type isEqualToString:@"User"] || !userContainer) return NO;
+        for (NSString *fragment in @[@"Service", @"service", @"UIService", @"Helper", @"Widget", @"appex", @"/PlugIns/", @"/Extensions/"]) if ([path containsString:fragment]) return NO;
+        return YES; // User 容器包含 App Store 与 TrollStore 安装的可启动应用。
+    } @catch (NSException *exception) { return NO; }
 }

@@ -108,9 +108,9 @@ static NSString *ABMCLinkTitle(NSString *linkID) {
     cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
     if ([spec propertyForKey:@"chosenAction"]) {
         cell.textLabel.textColor = UIColor.systemBlueColor;
-        cell.textLabel.font = [UIFont systemFontOfSize:20.0 weight:UIFontWeightRegular];
+        cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
         UIImageView *view = [[UIImageView alloc] initWithImage:ABMCTintedIcon(@"lightbulb.max", UIColor.systemBlueColor)];
-        view.frame = CGRectMake(0, 0, 26, 26); view.contentMode = UIViewContentModeScaleAspectFit;
+        view.frame = CGRectMake(0, 0, 32, 32); view.contentMode = UIViewContentModeScaleAspectFit;
         cell.accessoryView = view;
     }
     NSString *icon = [spec propertyForKey:@"iconToken"];

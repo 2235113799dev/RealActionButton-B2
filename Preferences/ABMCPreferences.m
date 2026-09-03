@@ -1,4 +1,5 @@
 #import "ABMCPreferences.h"
+#import "ABMCUIHelpers.h"
 #import <Preferences/PSSpecifier.h>
 
 #define PREFS_DOMAIN @"com.huynguyen.actionbuttonmulticlick"
@@ -61,6 +62,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [single setProperty:@"singleClickAction" forKey:@"key"];
         [single setProperty:@"default" forKey:@"default"];
         [single setProperty:PREFS_DOMAIN forKey:@"defaults"];
+        [single setProperty:@"hand.tap.fill" forKey:@"iconToken"];
         [specs addObject:single];
 
         PSSpecifier *dbl = [PSSpecifier preferenceSpecifierNamed:@"双击动作"
@@ -73,6 +75,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [dbl setProperty:@"doubleClickAction" forKey:@"key"];
         [dbl setProperty:@"none" forKey:@"default"];
         [dbl setProperty:PREFS_DOMAIN forKey:@"defaults"];
+        [dbl setProperty:@"hand.tap.fill" forKey:@"iconToken"];
         [specs addObject:dbl];
 
         PSSpecifier *longPress = [PSSpecifier preferenceSpecifierNamed:@"长按动作"
@@ -85,6 +88,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [longPress setProperty:@"longPressAction" forKey:@"key"];
         [longPress setProperty:@"default" forKey:@"default"];
         [longPress setProperty:PREFS_DOMAIN forKey:@"defaults"];
+        [longPress setProperty:@"hand.tap.fill" forKey:@"iconToken"];
         [specs addObject:longPress];
 
         PSSpecifier *urlModeGroup = [PSSpecifier groupSpecifierWithName:@"链接打开方式"];
@@ -101,6 +105,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [urlMode setProperty:@"urlOpenMode" forKey:@"key"];
         [urlMode setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [urlMode setProperty:@YES forKey:@"default"];
+        [urlMode setProperty:@"link.circle.fill" forKey:@"iconToken"];
         [specs addObject:urlMode];
 
         _specifiers = specs;
@@ -148,6 +153,19 @@ static NSString *titleForActionID(NSString *actionID) {
         }
     }
     [self reloadSpecifierID:@"urlOpenMode"];
+}
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    NSString *icon = [specifier propertyForKey:@"iconToken"];
+    if (icon.length) {
+        UIImage *image = ABMCTintedIcon(icon, UIColor.systemBlueColor);
+        UIImageView *view = [[UIImageView alloc] initWithImage:image];
+        view.frame = CGRectMake(0, 0, 30, 30);
+        view.contentMode = UIViewContentModeScaleAspectFit;
+        cell.imageView.image = image;
+    }
+    return cell;
 }
 
 @end

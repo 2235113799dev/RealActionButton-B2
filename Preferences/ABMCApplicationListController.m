@@ -71,7 +71,7 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ABMCAppCell"];
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ABMCAppCell"];
     NSDictionary *item = self.visibleApplications[indexPath.row];
-    cell.imageView.image = ABMCTintedIcon(@"app.fill", UIColor.systemBlueColor);
+    cell.imageView.image = ABMCIconImage(item[@"bundleID"]);
     cell.textLabel.font = [UIFont systemFontOfSize:17.0];
     cell.detailTextLabel.font = [UIFont systemFontOfSize:13.0];
     cell.textLabel.text = item[@"name"];

@@ -19,6 +19,10 @@ UIImage *ABMCIconImageForProxy(id application);
 UIImage *ABMCAppShortcutIconImage(id shortcutItem, NSString *bundleID);
 /// Uses Apple's VoiceShortcutClient renderer; returns nil when unavailable.
 UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor);
+/// Reads one saved Shortcut's original icon by UUID (Preferences-only, read-only).
+UIImage *ABMCWorkflowIconForIdentifier(NSString *identifier);
+/// Compatibility lookup for older name-based saved actions.
+UIImage *ABMCWorkflowIconForName(NSString *name);
 
 /// B2-only presentation overrides. They never modify apps or Shortcuts data.
 NSString *ABMCDisplayTitle(NSString *key, NSString *fallback);

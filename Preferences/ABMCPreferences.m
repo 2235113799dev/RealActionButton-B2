@@ -1,4 +1,5 @@
 #import "ABMCPreferences.h"
+#import "ABMCIconStyleController.h"
 #import "ABMCUIHelpers.h"
 #import <Preferences/PSSpecifier.h>
 
@@ -98,18 +99,12 @@ static NSString *titleForActionID(NSString *actionID) {
         [specs addObject:longPress];
 
         PSSpecifier *appearanceGroup = [PSSpecifier groupSpecifierWithName:@"全局外观"];
-        [appearanceGroup setProperty:@"开启后，所有图标使用同一视觉画布。分组、基础动作、已选动作、快捷方式和 URL 可左滑修改或清空；应用列表与指令列表始终保留原名称和原图标。" forKey:@"footerText"];
+        [appearanceGroup setProperty:@"图标尺寸和颜色全局生效。分组、基础动作、已选动作、快捷方式和 URL 可左滑修改或清空；应用列表与指令列表始终保留原名称和原图标。" forKey:@"footerText"];
         [specs addObject:appearanceGroup];
-        PSSpecifier *unifiedIcons = [PSSpecifier preferenceSpecifierNamed:@"统一图标大小" target:self set:@selector(setOpenMode:specifier:) get:@selector(openModeForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
-        [unifiedIcons setProperty:@"unifiedIconSizing" forKey:@"key"];
-        [unifiedIcons setProperty:@"unifiedIconSizing" forKey:@"id"];
-        [unifiedIcons setProperty:PREFS_DOMAIN forKey:@"defaults"];
-        [unifiedIcons setProperty:@YES forKey:@"default"];
-        [unifiedIcons setProperty:ABMCTintedIcon(@"arrow.up.left.and.arrow.down.right", ABMCUnifiedIconColor()) forKey:@"iconImage"];
-        [specs addObject:unifiedIcons];
-        PSSpecifier *iconStyle = [PSSpecifier preferenceSpecifierNamed:@"图标尺寸与颜色" target:self set:NULL get:NULL detail:NSClassFromString(@"ABMCIconStyleController") cell:PSLinkCell edit:Nil];
-        [iconStyle setProperty:ABMCTintedIcon(@"paintpalette.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"];
-        [specs addObject:iconStyle];
+        PSSpecifier *size = [PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"图标尺寸  %.0f pt", ABMCUnifiedIconSize()] target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil];
+        [size setProperty:@"iconStyleSize" forKey:@"styleMode"]; [size setProperty:ABMCTintedIcon(@"arrow.up.left.and.arrow.down.right", ABMCUnifiedIconColor()) forKey:@"iconImage"]; size->action=@selector(openIconStyle:); [specs addObject:size];
+        PSSpecifier *color = [PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"图标颜色  %@", ABMCUnifiedIconColorHex()] target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil];
+        [color setProperty:@"iconStyleColor" forKey:@"styleMode"]; [color setProperty:ABMCTintedIcon(@"paintpalette.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"]; color->action=@selector(openIconStyle:); [specs addObject:color];
 
         PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"启动方式"];
         [launchGroup setProperty:@"开启时优先由系统全屏执行；关闭时使用兼容启动路线，供 FV 等分屏插件接管。快捷指令始终优先后台直接运行，只有后台接口不可用才使用后备启动方式。" forKey:@"footerText"];
@@ -150,6 +145,11 @@ static NSString *titleForActionID(NSString *actionID) {
     return _specifiers;
 }
 
+- (void)openIconStyle:(PSSpecifier *)specifier {
+    ABMCIconStyleMode mode=[[specifier propertyForKey:@"styleMode"] isEqualToString:@"iconStyleColor"] ? ABMCIconStyleModeColor : ABMCIconStyleModeSize;
+    [self.navigationController pushViewController:[[ABMCIconStyleController alloc] initWithMode:mode] animated:YES];
+}
+
 - (NSNumber *)openModeForSpecifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
     CFPreferencesAppSynchronize((__bridge CFStringRef)PREFS_DOMAIN);
@@ -187,7 +187,7 @@ static NSString *titleForActionID(NSString *actionID) {
             [spec setProperty:ABMCDisplayTitle([@"action." stringByAppendingString:actionID ?: @"none"], title) forKey:@"cellValue"];
         }
     }
-    for (NSString *identifier in @[@"unifiedIconSizing", @"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode"]) [self reloadSpecifierID:identifier];
+    for (NSString *identifier in @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode"]) [self reloadSpecifierID:identifier];
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];

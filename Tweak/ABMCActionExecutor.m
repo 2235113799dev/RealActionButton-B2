@@ -1,4 +1,5 @@
 #import "ABMCActionExecutor.h"
+#import "ABMCShortcutPanelController.h"
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
@@ -15,6 +16,7 @@
 - (id)cachedAppShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
+- (void)showShortcutPanel:(NSString *)panelID;
 - (void)runShortcut:(NSString *)name;
 - (void)runAppShortcutBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)showControlCenter;
@@ -141,6 +143,8 @@ BOOL ABMCPerformingDefaultAction = NO;
         NSString *payload = [actionID substringFromIndex:11];
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
         [self runShortcutIdentifier:parts.firstObject name:(parts.count > 1 ? parts[1] : @"")];
+    } else if ([actionID hasPrefix:@"shortcutpanel:"]) {
+        [self showShortcutPanel:[actionID substringFromIndex:14]];
     } else if ([actionID hasPrefix:@"shortcut:"]) {
         [self runShortcut:[actionID substringFromIndex:9]];
     }
@@ -533,9 +537,15 @@ BOOL ABMCPerformingDefaultAction = NO;
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             id target = [self cachedAppShortcutItemForBundleIdentifier:bundleIdentifier type:type] ?: [self appShortcutItemForBundleIdentifier:bundleIdentifier type:type];
-            Class iconView = NSClassFromString(@"SBIconView");
-            SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
-            if (target && [iconView respondsToSelector:activate]) ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconView, activate, target, bundleIdentifier, nil);
+            Class controllerClass=NSClassFromString(@"SBIconController"); SEL shared=NSSelectorFromString(@"sharedInstance");
+            id controller=[controllerClass respondsToSelector:shared]?((id(*)(id,SEL))objc_msgSend)(controllerClass,shared):nil;
+            id manager=[controller respondsToSelector:NSSelectorFromString(@"iconManager")]?((id(*)(id,SEL))objc_msgSend)(controller,NSSelectorFromString(@"iconManager")):nil;
+            id model=[manager respondsToSelector:NSSelectorFromString(@"iconModel")]?((id(*)(id,SEL))objc_msgSend)(manager,NSSelectorFromString(@"iconModel")):nil;
+            SEL iconForID=NSSelectorFromString(@"applicationIconForBundleIdentifier:"); id icon=[model respondsToSelector:iconForID]?((id(*)(id,SEL,id))objc_msgSend)(model,iconForID,bundleIdentifier):nil;
+            Class iconViewClass=NSClassFromString(@"SBIconView"); SEL defaultLocation=NSSelectorFromString(@"defaultIconLocation"); id location=[iconViewClass respondsToSelector:defaultLocation]?((id(*)(id,SEL))objc_msgSend)(iconViewClass,defaultLocation):nil;
+            SEL viewForIcon=NSSelectorFromString(@"iconViewForIcon:location:");id iconView=(icon&&[manager respondsToSelector:viewForIcon])?((id(*)(id,SEL,id,id))objc_msgSend)(manager,viewForIcon,icon,location):nil;
+            SEL activate=NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
+            if(target&&[iconViewClass respondsToSelector:activate])((void(*)(id,SEL,id,id,id))objc_msgSend)(iconViewClass,activate,target,bundleIdentifier,iconView);
         } @catch (NSException *exception) {}
     });
 }
@@ -562,6 +572,22 @@ BOOL ABMCPerformingDefaultAction = NO;
         // URL is intentionally only the final compatibility fallback when the
         // SpringBoard-specific system runner is unavailable on an OS build.
         if (!submitted) [self runShortcut:name];
+    });
+}
+
+- (void)showShortcutPanel:(NSString *)panelID {
+    if (!panelID.length) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CFPropertyListRef value=CFPreferencesCopyAppValue(CFSTR("shortcutPanels"),PREFS_DOMAIN);
+        NSArray *items=value&&CFGetTypeID(value)==CFDictionaryGetTypeID()?[(__bridge NSDictionary*)value objectForKey:panelID]:nil;
+        if(value)CFRelease(value); if(![items isKindOfClass:NSArray.class]||items.count<2)return;
+        NSArray *limited=[items subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,items.count))];
+        UIWindow *window=UIApplication.sharedApplication.keyWindow;
+        if(!window)for(UIWindow *candidate in UIApplication.sharedApplication.windows)if(candidate.isKeyWindow){window=candidate;break;}
+        UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;
+        if(!host)return;
+        ABMCShortcutPanelController *panel=[[ABMCShortcutPanelController alloc]initWithItems:limited selection:^(NSDictionary *item){[self runShortcutIdentifier:item[@"identifier"] name:item[@"name"]];}];
+        [host presentViewController:panel animated:YES completion:nil];
     });
 }
 

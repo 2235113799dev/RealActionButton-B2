@@ -42,6 +42,7 @@ static NSString *TitleForAction(NSString *action) {
     if ([action hasPrefix:@"app:"]) return ABMCApplicationName([action substringFromIndex:4]);
     if ([action hasPrefix:@"appshortcut:"]) { NSArray *p = [[action substringFromIndex:12] componentsSeparatedByString:@"|"]; return p.count > 2 && [p[2] length] ? p[2] : @"快捷方式"; }
     if ([action hasPrefix:@"shortcutid:"]) { NSArray *p = [[action substringFromIndex:11] componentsSeparatedByString:@"|"]; return p.count > 1 ? p[1] : @"快捷指令"; }
+    if ([action hasPrefix:@"shortcutpanel:"]) return @"快捷指令面板";
     if ([action hasPrefix:@"shortcut:"]) return [action substringFromIndex:9];
     if ([action hasPrefix:@"link:"]) return SavedURLTitle([action substringFromIndex:5]) ?: @"URL（未找到）";
     if ([action hasPrefix:@"url:"]) return [action substringFromIndex:4];
@@ -51,6 +52,16 @@ static NSString *PresentationKeyForAction(NSString *action) { return [@"action."
 static NSString *DisplayedTitleForAction(NSString *action) { return ABMCDisplayTitle(PresentationKeyForAction(action), TitleForAction(action)); }
 static UIImage *IconForAction(NSString *action) {
     const ActionInfo *info = InfoForAction(action);
+    if ([action hasPrefix:@"shortcutid:"]) {
+        NSArray *parts=[[action substringFromIndex:11] componentsSeparatedByString:@"|"];
+        if(parts.count>3){UIImage *workflow=ABMCWorkflowIconImage([parts[2] integerValue],[parts[3] longLongValue]);if(workflow)return workflow;}
+        UIImage *workflow=ABMCWorkflowIconForIdentifier(parts.firstObject);
+        if(workflow)return workflow;
+    }
+    if ([action hasPrefix:@"shortcut:"]) {
+        UIImage *workflow=ABMCWorkflowIconForName([action substringFromIndex:9]);
+        if(workflow)return workflow;
+    }
     NSString *fallback = info ? info->icon : ([action hasPrefix:@"app:"] ? [action substringFromIndex:4] : ([action hasPrefix:@"appshortcut:"] ? [[action substringFromIndex:12] componentsSeparatedByString:@"|"].firstObject : ([action hasPrefix:@"shortcutid:"] || [action hasPrefix:@"shortcut:"] ? @"square.stack.3d.up.fill" : ([action hasPrefix:@"link:"] || [action hasPrefix:@"url:"] ? @"link" : @"hand.tap.fill"))));
     NSString *token = ABMCDisplayIconToken(PresentationKeyForAction(action), fallback);
     // Symbols must be resolved before application identifiers. The inverse

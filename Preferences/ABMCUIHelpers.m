@@ -2,6 +2,7 @@
 #import <math.h>
 #import <objc/message.h>
 #import <dlfcn.h>
+#import <sqlite3.h>
 
 @interface UIImage (ABMCPrivateIcon)
 + (instancetype)_applicationIconImageForBundleIdentifier:(NSString *)identifier format:(int)format scale:(CGFloat)scale;
@@ -75,15 +76,10 @@ NSArray *ABMCInstalledApplications(void) {
 
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCPresentationKey CFSTR("presentationOverrides")
-#define ABMCUnifiedSizeKey CFSTR("unifiedIconSizing")
 #define ABMCUnifiedPointSizeKey CFSTR("unifiedIconSize")
 #define ABMCUnifiedColorKey CFSTR("unifiedIconColor")
 
-BOOL ABMCUnifiedIconSizingEnabled(void) {
-    CFPropertyListRef value = CFPreferencesCopyAppValue(ABMCUnifiedSizeKey, ABMCDomain);
-    BOOL enabled = value && CFGetTypeID(value) == CFBooleanGetTypeID() ? CFBooleanGetValue((CFBooleanRef)value) : YES;
-    if (value) CFRelease(value); return enabled;
-}
+BOOL ABMCUnifiedIconSizingEnabled(void) { return YES; }
 CGFloat ABMCUnifiedIconSize(void) {
     CFPropertyListRef value=CFPreferencesCopyAppValue(ABMCUnifiedPointSizeKey,ABMCDomain);
     CGFloat size=value&&CFGetTypeID(value)==CFNumberGetTypeID()?[(__bridge NSNumber *)value doubleValue]:30.0;
@@ -188,6 +184,24 @@ UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor) {
         if ([result isKindOfClass:UIImage.class]) [cache setObject:result forKey:key];
         return [result isKindOfClass:UIImage.class] ? result : nil;
     } @catch (NSException *exception) { return nil; }
+}
+
+UIImage *ABMCWorkflowIconForIdentifier(NSString *identifier) {
+    if (!identifier.length) return nil;
+    static NSCache *cache; static dispatch_once_t once; dispatch_once(&once, ^{ cache=[NSCache new]; cache.countLimit=300; });
+    UIImage *saved=[cache objectForKey:identifier]; if(saved)return saved;
+    for(NSString *path in @[@"/private/var/mobile/Library/Shortcuts/Shortcuts.sqlite",@"/var/mobile/Library/Shortcuts/Shortcuts.sqlite"]) {
+        sqlite3 *db=NULL; if(sqlite3_open_v2(path.fileSystemRepresentation,&db,SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX,NULL)!=SQLITE_OK){if(db)sqlite3_close(db);continue;}
+        sqlite3_stmt *s=NULL;UIImage *result=nil;const char *sql="SELECT COALESCE(i.ZGLYPHNUMBER,0),COALESCE(i.ZBACKGROUNDCOLORVALUE,0) FROM ZSHORTCUT x LEFT JOIN ZSHORTCUTICON i ON i.Z_PK=x.ZICON WHERE upper(x.ZWORKFLOWID)=upper(?) LIMIT 1";
+        if(sqlite3_prepare_v2(db,sql,-1,&s,NULL)==SQLITE_OK){sqlite3_bind_text(s,1,identifier.UTF8String,-1,SQLITE_TRANSIENT);if(sqlite3_step(s)==SQLITE_ROW)result=ABMCWorkflowIconImage(sqlite3_column_int64(s,0),sqlite3_column_int64(s,1));}if(s)sqlite3_finalize(s);sqlite3_close(db);if(result){[cache setObject:result forKey:identifier];return result;}
+    }return nil;
+}
+
+UIImage *ABMCWorkflowIconForName(NSString *name) {
+    if (!name.length) return nil;
+    for(NSString *path in @[@"/private/var/mobile/Library/Shortcuts/Shortcuts.sqlite",@"/var/mobile/Library/Shortcuts/Shortcuts.sqlite"]) {
+        sqlite3 *db=NULL;if(sqlite3_open_v2(path.fileSystemRepresentation,&db,SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX,NULL)!=SQLITE_OK){if(db)sqlite3_close(db);continue;}sqlite3_stmt*s=NULL;UIImage*result=nil;const char*q="SELECT COALESCE(i.ZGLYPHNUMBER,0),COALESCE(i.ZBACKGROUNDCOLORVALUE,0) FROM ZSHORTCUT x LEFT JOIN ZSHORTCUTICON i ON i.Z_PK=x.ZICON WHERE x.ZNAME=? AND COALESCE(x.ZTOMBSTONED,0)=0 LIMIT 1";if(sqlite3_prepare_v2(db,q,-1,&s,NULL)==SQLITE_OK){sqlite3_bind_text(s,1,name.UTF8String,-1,SQLITE_TRANSIENT);if(sqlite3_step(s)==SQLITE_ROW)result=ABMCWorkflowIconImage(sqlite3_column_int64(s,0),sqlite3_column_int64(s,1));}if(s)sqlite3_finalize(s);sqlite3_close(db);if(result)return result;
+    }return nil;
 }
 
 UIImage *ABMCIconImage(NSString *token) {

@@ -21,7 +21,7 @@ static NSString *ABMCNormalizeURL(NSString *value) {
 @end
 @implementation ABMCLinkListController {
     NSString *_preferenceKey;
-    NSMutableArray<NSMutableDictionary *> *_links;
+    NSMutableArray *_links;
     NSString *_query;
 }
 - (instancetype)initWithPreferenceKey:(NSString *)key { if ((self=[super initWithStyle:UITableViewStyleInsetGrouped])) { _preferenceKey=[key copy]; self.title=@"链接管理"; } return self; }

@@ -6,90 +6,71 @@
 #define ABMCChanged CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged")
 
 @interface ABMCApplicationListController () <UISearchBarDelegate>
-- (NSArray *)visibleApplications;
-- (void)loadApplications;
 @end
 
 @implementation ABMCApplicationListController {
     NSString *_preferenceKey;
-    NSArray *_applications;
+    NSArray *_apps;
     NSString *_query;
 }
 
 - (instancetype)initWithPreferenceKey:(NSString *)key {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        _preferenceKey = [key copy];
-        self.title = @"应用列表";
-    }
+    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) { _preferenceKey = [key copy]; self.title = @"应用列表"; }
     return self;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     _query = @"";
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 72.0)];
-    UISearchBar *search = [[UISearchBar alloc] initWithFrame:CGRectInset(header.bounds, 10.0, 8.0)];
-    search.placeholder = @"搜索商店应用";
-    search.delegate = self;
-    [header addSubview:search];
-    self.tableView.tableHeaderView = header;
-    [self loadApplications];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 72)];
+    UISearchBar *bar = [[UISearchBar alloc] initWithFrame:CGRectInset(header.bounds, 10, 8)];
+    bar.placeholder = @"搜索应用"; bar.delegate = self; [header addSubview:bar]; self.tableView.tableHeaderView = header;
+    [self reloadApplications];
 }
 
-- (void)loadApplications {
+- (void)reloadApplications {
     NSMutableDictionary *unique = [NSMutableDictionary dictionary];
     @try {
         Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-        SEL workspaceSelector = NSSelectorFromString(@"defaultWorkspace");
-        SEL applicationsSelector = NSSelectorFromString(@"allInstalledApplications");
-        id workspace = workspaceClass && [workspaceClass respondsToSelector:workspaceSelector] ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, workspaceSelector) : nil;
-        NSArray *proxies = workspace && [workspace respondsToSelector:applicationsSelector] ? ((id (*)(id, SEL))objc_msgSend)(workspace, applicationsSelector) : nil;
+        SEL shared = NSSelectorFromString(@"defaultWorkspace"), all = NSSelectorFromString(@"allInstalledApplications");
+        id workspace = workspaceClass && [workspaceClass respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, shared) : nil;
+        NSArray *proxies = workspace && [workspace respondsToSelector:all] ? ((id (*)(id, SEL))objc_msgSend)(workspace, all) : nil;
         for (id proxy in proxies) {
             if (!ABMCIsAllowedStoreApplicationProxy(proxy)) continue;
             NSString *bundleID = [proxy respondsToSelector:@selector(bundleIdentifier)] ? [proxy bundleIdentifier] : nil;
             NSString *name = [proxy respondsToSelector:@selector(localizedName)] ? [proxy localizedName] : nil;
-            if (bundleID.length) unique[bundleID] = @{ @"bundleID": bundleID, @"name": name.length ? name : bundleID };
+            if (!bundleID.length) continue;
+            UIImage *icon = ABMCIconImageForProxy(proxy);
+            unique[bundleID] = @{ @"bundleID": bundleID, @"name": name.length ? name : bundleID, @"icon": icon ?: [NSNull null] };
         }
     } @catch (NSException *exception) {}
-    _applications = [[unique allValues] sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *left, NSDictionary *right) {
-        return [left[@"name"] localizedCaseInsensitiveCompare:right[@"name"]];
-    }];
+    _apps = [[unique allValues] sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) { return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]]; }];
     [self.tableView reloadData];
 }
 
-- (NSArray *)visibleApplications {
-    if (!_query.length) return _applications ?: @[];
+- (NSArray *)visibleApps {
+    if (!_query.length) return _apps ?: @[];
     NSPredicate *filter = [NSPredicate predicateWithBlock:^BOOL(NSDictionary *item, NSDictionary *bindings) {
         return [item[@"name"] localizedCaseInsensitiveContainsString:self->_query] || [item[@"bundleID"] localizedCaseInsensitiveContainsString:self->_query];
     }];
-    return [_applications filteredArrayUsingPredicate:filter];
+    return [_apps filteredArrayUsingPredicate:filter];
 }
 
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.visibleApplications.count; }
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ABMCAppCell"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ABMCAppCell"];
-    NSDictionary *item = self.visibleApplications[indexPath.row];
-    cell.imageView.image = ABMCIconImage(item[@"bundleID"]);
-    cell.textLabel.font = [UIFont systemFontOfSize:17.0];
-    cell.detailTextLabel.font = [UIFont systemFontOfSize:13.0];
-    cell.textLabel.text = item[@"name"];
-    cell.detailTextLabel.text = item[@"bundleID"];
-    CFStringRef current = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain);
-    cell.accessoryType = current && [(__bridge NSString *)current isEqualToString:[@"app:" stringByAppendingString:item[@"bundleID"]]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    if (current) CFRelease(current);
-    return cell;
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.visibleApps.count; }
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"AppCell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"AppCell"];
+    NSDictionary *item = self.visibleApps[path.row]; id icon = item[@"icon"];
+    cell.imageView.image = [icon isKindOfClass:[UIImage class]] ? icon : ABMCTintedIcon(@"app.fill", UIColor.systemBlueColor);
+    cell.textLabel.font = [UIFont systemFontOfSize:17]; cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
+    cell.textLabel.text = item[@"name"]; cell.detailTextLabel.text = item[@"bundleID"];
+    CFStringRef value = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain);
+    cell.accessoryType = value && [(__bridge NSString *)value isEqualToString:[@"app:" stringByAppendingString:item[@"bundleID"]]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    if (value) CFRelease(value); return cell;
 }
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *item = self.visibleApplications[indexPath.row];
-    NSString *action = [@"app:" stringByAppendingString:item[@"bundleID"]];
-    CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, ABMCDomain);
-    CFPreferencesAppSynchronize(ABMCDomain);
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES);
-    [self.navigationController popViewControllerAnimated:YES];
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
+    NSDictionary *item = self.visibleApps[path.row]; NSString *action = [@"app:" stringByAppendingString:item[@"bundleID"]];
+    CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, ABMCDomain); CFPreferencesAppSynchronize(ABMCDomain);
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES); [self.navigationController popViewControllerAnimated:YES];
 }
-
-- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText { _query = [searchText copy] ?: @""; [self.tableView reloadData]; }
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text { _query = [text copy] ?: @""; [self.tableView reloadData]; }
 @end

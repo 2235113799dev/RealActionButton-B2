@@ -11,6 +11,8 @@
 - (void)openFullscreenURL:(NSURL *)url;
 - (void)openSavedLink:(NSString *)linkID;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
+- (void)showControlCenter;
+- (void)showNotificationCenter;
 @end
 
 BOOL ABMCPerformingDefaultAction = NO;
@@ -102,6 +104,12 @@ BOOL ABMCPerformingDefaultAction = NO;
         [self takeScreenshot];
     } else if ([actionID isEqualToString:@"lock"]) {
         [self lockDevice];
+    } else if ([actionID isEqualToString:@"controlCenter"]) {
+        [self showControlCenter];
+    } else if ([actionID isEqualToString:@"notificationCenter"]) {
+        [self showNotificationCenter];
+    } else if ([actionID isEqualToString:@"settings"]) {
+        [self openApp:@"com.apple.Preferences"];
     } else if ([actionID isEqualToString:@"respring"]) {
         [self respring];
     } else if ([actionID isEqualToString:@"wechatScan"]) {
@@ -266,6 +274,36 @@ BOOL ABMCPerformingDefaultAction = NO;
             }
         }
     } @catch (NSException *e) {}
+}
+
+#pragma mark - System Panels
+
+- (void)showControlCenter {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            Class c = NSClassFromString(@"SBControlCenterController");
+            SEL shared = NSSelectorFromString(@"sharedInstance");
+            id controller = c && [c respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(c, shared) : nil;
+            for (NSString *name in @[@"presentAnimated:", @"_presentAnimated:"]) {
+                SEL selector = NSSelectorFromString(name);
+                if ([controller respondsToSelector:selector]) { ((void (*)(id, SEL, BOOL))objc_msgSend)(controller, selector, YES); return; }
+            }
+        } @catch (NSException *exception) {}
+    });
+}
+
+- (void)showNotificationCenter {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            Class c = NSClassFromString(@"SBNotificationCenterController");
+            SEL shared = NSSelectorFromString(@"sharedInstance");
+            id controller = c && [c respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(c, shared) : nil;
+            for (NSString *name in @[@"presentAnimated:", @"_presentAnimated:"]) {
+                SEL selector = NSSelectorFromString(name);
+                if ([controller respondsToSelector:selector]) { ((void (*)(id, SEL, BOOL))objc_msgSend)(controller, selector, YES); return; }
+            }
+        } @catch (NSException *exception) {}
+    });
 }
 
 #pragma mark - Lock Device

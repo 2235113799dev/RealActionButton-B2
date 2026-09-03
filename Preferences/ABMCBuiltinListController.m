@@ -9,7 +9,9 @@ static const ABMCBuiltinAction kActions[] = {
     {@"default", @"系统默认", @"gearshape.fill"}, {@"flashlight", @"手电筒", @"flashlight.on.fill"},
     {@"camera", @"相机", @"camera.fill"}, {@"silent", @"静音切换", @"bell.slash.fill"},
     {@"screenshot", @"截屏", @"viewfinder"}, {@"lock", @"锁屏", @"lock.fill"},
-    {@"respring", @"重启界面", @"arrow.clockwise"}, {@"wechatScan", @"微信扫码", @"qrcode.viewfinder"},
+    {@"controlCenter", @"控制中心", @"switch.2"}, {@"notificationCenter", @"通知中心", @"bell.fill"},
+    {@"settings", @"打开设置", @"gearshape.fill"}, {@"respring", @"重启界面", @"arrow.clockwise"},
+    {@"wechatScan", @"微信扫码", @"qrcode.viewfinder"},
     {@"wechatPay", @"微信付款码", @"creditcard.fill"}, {@"alipayScan", @"支付宝扫码", @"qrcode.viewfinder"},
     {@"alipayPay", @"支付宝付款码", @"creditcard.fill"}, {@"none", @"无操作", @"nosign"}
 };

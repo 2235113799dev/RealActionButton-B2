@@ -13,6 +13,9 @@ static NSString *titleForActionID(NSString *actionID) {
     if ([actionID isEqualToString:@"silent"]) return @"静音切换";
     if ([actionID isEqualToString:@"screenshot"]) return @"截屏";
     if ([actionID isEqualToString:@"lock"]) return @"锁屏";
+    if ([actionID isEqualToString:@"controlCenter"]) return @"控制中心";
+    if ([actionID isEqualToString:@"notificationCenter"]) return @"通知中心";
+    if ([actionID isEqualToString:@"settings"]) return @"打开设置";
     if ([actionID isEqualToString:@"respring"]) return @"重启界面";
     if ([actionID isEqualToString:@"wechatScan"]) return @"微信扫码";
     if ([actionID isEqualToString:@"wechatPay"]) return @"微信付款码";

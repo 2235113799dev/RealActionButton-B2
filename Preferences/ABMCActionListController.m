@@ -13,7 +13,8 @@
 typedef struct { NSString *identifier; NSString *title; } ABMCBuiltinAction;
 static const ABMCBuiltinAction kBuiltinActions[] = {
     {@"default", @"系统默认"}, {@"flashlight", @"手电筒"}, {@"camera", @"相机"}, {@"silent", @"静音切换"},
-    {@"screenshot", @"截屏"}, {@"lock", @"锁屏"}, {@"respring", @"重启界面"}, {@"wechatScan", @"微信扫码"},
+    {@"screenshot", @"截屏"}, {@"lock", @"锁屏"}, {@"controlCenter", @"控制中心"},
+    {@"notificationCenter", @"通知中心"}, {@"settings", @"打开设置"}, {@"respring", @"重启界面"}, {@"wechatScan", @"微信扫码"},
     {@"wechatPay", @"微信付款码"}, {@"alipayScan", @"支付宝扫码"}, {@"alipayPay", @"支付宝付款码"}, {@"none", @"无操作"}
 };
 
@@ -109,9 +110,8 @@ static NSString *ABMCLinkTitle(NSString *linkID) {
     if ([spec propertyForKey:@"chosenAction"]) {
         cell.textLabel.textColor = UIColor.systemBlueColor;
         cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
-        UIImageView *view = [[UIImageView alloc] initWithImage:ABMCTintedIcon(@"lightbulb.max", UIColor.systemBlueColor)];
-        view.frame = CGRectMake(0, 0, 32, 32); view.contentMode = UIViewContentModeScaleAspectFit;
-        cell.accessoryView = view;
+        cell.imageView.image = ABMCTintedIcon(@"lightbulb.max", UIColor.systemBlueColor);
+        cell.accessoryView = nil;
     }
     NSString *icon = [spec propertyForKey:@"iconToken"];
     if (icon.length) cell.imageView.image = ABMCTintedIcon(icon, UIColor.systemBlueColor);

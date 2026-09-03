@@ -131,10 +131,11 @@ static BOOL ABMCContainsChinese(NSString *value) {
     NSDictionary *item = items[path.row];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     cell.imageView.image = ABMCTintedIcon(@"square.stack.3d.up.fill", UIColor.systemBlueColor);
-    cell.textLabel.font = [UIFont systemFontOfSize:17];
-    cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
+    UIImage *icon = ABMCShortcutIconForIdentifier(item[@"identifier"]);
+    ABMCApplyLargeIcon(cell, icon ?: ABMCTintedIcon(@"square.stack.3d.up.fill", UIColor.systemBlueColor));
+    cell.textLabel.font = [UIFont systemFontOfSize:18];
+    cell.detailTextLabel.text = nil;
     cell.textLabel.text = item[@"name"];
-    cell.detailTextLabel.text = item[@"identifier"];
     NSString *action = [NSString stringWithFormat:@"shortcutid:%@|%@", item[@"identifier"], item[@"name"]];
     CFStringRef current = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain);
     cell.accessoryType = current && [(__bridge NSString *)current isEqualToString:action] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;

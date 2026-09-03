@@ -1,145 +1,31 @@
 #import "ABMCActionListController.h"
 #import "ABMCApplicationListController.h"
+#import "ABMCAppShortcutListController.h"
 #import "ABMCShortcutListController.h"
 #import "ABMCLinkListController.h"
+#import "ABMCPresetLinkController.h"
 #import "ABMCBuiltinListController.h"
 #import "ABMCUIHelpers.h"
 #import <Preferences/PSSpecifier.h>
 
-#define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
-#define ABMCTestNotification CFSTR("com.huynguyen.actionbuttonmulticlick/testCurrentAction")
-#define ABMCLinksKey CFSTR("savedLinks")
-
-typedef struct { NSString *identifier; NSString *title; } ABMCBuiltinAction;
-static const ABMCBuiltinAction kBuiltinActions[] = {
-    {@"default", @"系统默认"}, {@"flashlight", @"手电筒"}, {@"camera", @"相机"}, {@"silent", @"静音切换"},
-    {@"screenshot", @"截屏"}, {@"lock", @"锁屏"}, {@"controlCenter", @"控制中心"},
-    {@"notificationCenter", @"通知中心"}, {@"settings", @"打开设置"}, {@"respring", @"重启界面"}, {@"wechatScan", @"微信扫码"},
-    {@"wechatPay", @"微信付款码"}, {@"alipayScan", @"支付宝扫码"}, {@"alipayPay", @"支付宝付款码"}, {@"none", @"无操作"}
+#define Domain CFSTR("com.huynguyen.actionbuttonmulticlick")
+#define TestNotice CFSTR("com.huynguyen.actionbuttonmulticlick/testCurrentAction")
+#define LinksKey CFSTR("savedLinks")
+typedef struct { NSString *identifier; NSString *title; NSString *icon; } Action;
+static const Action kActions[] = {
+    {@"default",@"系统默认",@"gearshape.fill"},{@"flashlight",@"手电筒",@"flashlight.on.fill"},{@"camera",@"相机",@"camera.fill"},{@"silent",@"静音切换",@"bell.slash.fill"},{@"screenshot",@"截屏",@"viewfinder"},{@"lock",@"锁屏",@"lock.fill"},{@"controlCenter",@"控制中心",@"switch.2"},{@"notificationCenter",@"通知中心",@"bell.fill"},{@"settings",@"打开设置",@"gearshape.fill"},{@"respring",@"重启界面",@"arrow.clockwise"},{@"none",@"无操作",@"nosign"}
 };
-
-static NSString *ABMCLinkTitle(NSString *linkID) {
-    CFPropertyListRef value = CFPreferencesCopyAppValue(ABMCLinksKey, ABMCDomain);
-    NSString *title = nil;
-    if (value && CFGetTypeID(value) == CFArrayGetTypeID()) {
-        for (NSDictionary *item in (__bridge NSArray *)value) {
-            if ([item isKindOfClass:[NSDictionary class]] && [item[@"id"] isEqualToString:linkID]) { title = [item[@"title"] copy]; break; }
-        }
-    }
-    if (value) CFRelease(value);
-    return title;
-}
+static NSString *LinkTitle(NSString *identifier) {CFPropertyListRef value=CFPreferencesCopyAppValue(LinksKey,Domain);NSString*title=nil;if(value&&CFGetTypeID(value)==CFArrayGetTypeID())for(NSDictionary*x in (__bridge NSArray*)value)if([x isKindOfClass:NSDictionary.class]&&[x[@"id"]isEqualToString:identifier]){title=[x[@"title"]copy];break;}if(value)CFRelease(value);return title;}
+static NSString *ActionTitle(NSString *action){if(!action.length||[action isEqualToString:@"none"])return @"无操作";for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++)if([action isEqualToString:kActions[i].identifier])return kActions[i].title;if([action hasPrefix:@"app:"])return ABMCApplicationName([action substringFromIndex:4]);if([action hasPrefix:@"appshortcut:"]){NSArray*p=[[action substringFromIndex:12]componentsSeparatedByString:@"|"];return p.count>2&&[p[2] length]?p[2]:(p.count?ABMCApplicationName(p[0]):@"快捷方式");}if([action hasPrefix:@"shortcutid:"]){NSArray*p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>1?p[1]:@"快捷指令";}if([action hasPrefix:@"shortcut:"])return[action substringFromIndex:9];if([action hasPrefix:@"link:"])return LinkTitle([action substringFromIndex:5])?:@"链接（未找到）";if([action hasPrefix:@"url:"])return[action substringFromIndex:4];return action;}
+static UIImage *ActionIcon(NSString *action){for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++)if([action isEqualToString:kActions[i].identifier])return ABMCTintedIcon(kActions[i].icon,UIColor.systemBlueColor);if([action hasPrefix:@"app:"])return ABMCIconImageForBundleID([action substringFromIndex:4]);if([action hasPrefix:@"appshortcut:"]){NSArray*p=[[action substringFromIndex:12]componentsSeparatedByString:@"|"];return p.count?ABMCIconImageForBundleID(p[0]):nil;}if([action hasPrefix:@"shortcutid:"])return ABMCShortcutIconForIdentifier([[[action substringFromIndex:11]componentsSeparatedByString:@"|"]firstObject]);if([action hasPrefix:@"link:"]||[action hasPrefix:@"url:"])return ABMCTintedIcon(@"link",UIColor.systemBlueColor);return ABMCTintedIcon(@"questionmark.circle",UIColor.systemBlueColor);}
 
 @interface ABMCActionListController ()
-- (void)openCategory:(PSSpecifier *)specifier;
-- (void)testCurrentAction:(PSSpecifier *)specifier;
 @end
-
-@implementation ABMCActionListController {
-    NSString *_preferenceKey;
-    NSString *_defaultValue;
-    NSString *_currentValue;
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    PSSpecifier *parent = self.specifier;
-    _preferenceKey = [[parent propertyForKey:@"key"] copy];
-    _defaultValue = [[parent propertyForKey:@"default"] copy];
-    NSString *label = [parent name];
-    self.title = label.length ? label : @"选择动作";
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    CFStringRef value = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain);
-    _currentValue = value ? (__bridge_transfer NSString *)value : (_defaultValue ?: @"none");
-    _specifiers = nil;
-    [self reloadSpecifiers];
-}
-
-- (NSString *)displayAction:(NSString *)action {
-    if (!action.length || [action isEqualToString:@"none"]) return @"无操作";
-    for (NSUInteger i = 0; i < sizeof(kBuiltinActions) / sizeof(kBuiltinActions[0]); i++) {
-        if ([action isEqualToString:kBuiltinActions[i].identifier]) return [NSString stringWithFormat:@"内置：%@", kBuiltinActions[i].title];
-    }
-    if ([action hasPrefix:@"app:"]) return [NSString stringWithFormat:@"应用：%@", ABMCApplicationName([action substringFromIndex:4])];
-    if ([action hasPrefix:@"shortcutid:"]) {
-        NSArray *parts = [[action substringFromIndex:11] componentsSeparatedByString:@"|"];
-        return [NSString stringWithFormat:@"指令：%@", parts.count > 1 ? parts[1] : parts.firstObject];
-    }
-    if ([action hasPrefix:@"shortcut:"]) return [NSString stringWithFormat:@"指令：%@", [action substringFromIndex:9]];
-    if ([action hasPrefix:@"link:"]) return [NSString stringWithFormat:@"链接：%@", ABMCLinkTitle([action substringFromIndex:5]) ?: @"未找到"];
-    if ([action hasPrefix:@"url:"]) return [NSString stringWithFormat:@"链接：%@", [action substringFromIndex:4]];
-    return action;
-}
-
-- (NSArray *)specifiers {
-    if (!_specifiers) {
-        NSMutableArray *items = [NSMutableArray array];
-        [items addObject:[PSSpecifier groupSpecifierWithName:@"已选动作"]];
-        PSSpecifier *chosen = [PSSpecifier preferenceSpecifierNamed:[self displayAction:_currentValue] target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];
-        [chosen setProperty:@YES forKey:@"chosenAction"];
-        [items addObject:chosen];
-
-        [items addObject:[PSSpecifier groupSpecifierWithName:@"动作测试"]];
-        PSSpecifier *test = [PSSpecifier preferenceSpecifierNamed:@"立即测试当前动作" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
-        test->action = @selector(testCurrentAction:);
-        [items addObject:test];
-
-        NSArray *categories = @[
-            @[@"内置动作", @"内置动作", @"builtin", @"sparkles"], @[@"应用列表", @"应用列表", @"app", @"app.fill"],
-            @[@"指令列表", @"指令列表", @"shortcut", @"square.stack.3d.up.fill"], @[@"链接管理", @"链接管理", @"link", @"link"]
-        ];
-        for (NSArray *category in categories) {
-            [items addObject:[PSSpecifier groupSpecifierWithName:category[0]]];
-            PSSpecifier *entry = [PSSpecifier preferenceSpecifierNamed:category[1] target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil];
-            [entry setProperty:category[2] forKey:@"category"];
-            [entry setProperty:category[3] forKey:@"iconToken"];
-            entry->action = @selector(openCategory:);
-            [items addObject:entry];
-        }
-        _specifiers = items;
-    }
-    return _specifiers;
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
-    PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
-    cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
-    if ([spec propertyForKey:@"chosenAction"]) {
-        UIColor *blue = UIColor.systemBlueColor;
-        cell.tintColor = blue;
-        cell.textLabel.textColor = blue;
-        cell.detailTextLabel.textColor = blue;
-        cell.textLabel.attributedText = [[NSAttributedString alloc] initWithString:cell.textLabel.text ?: @"" attributes:@{NSForegroundColorAttributeName: blue, NSFontAttributeName: cell.textLabel.font}];
-        cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
-        UIImageView *light = [[UIImageView alloc] initWithImage:ABMCTintedIcon(@"lightbulb.max", blue)];
-        light.frame = CGRectMake(0, 0, 30, 30);
-        light.contentMode = UIViewContentModeScaleAspectFit;
-        cell.imageView.image = nil;
-        cell.accessoryView = light;
-    }
-    NSString *icon = [spec propertyForKey:@"iconToken"];
-    if (icon.length) cell.imageView.image = ABMCTintedIcon(icon, UIColor.systemBlueColor);
-    return cell;
-}
-
-- (void)openCategory:(PSSpecifier *)specifier {
-    NSString *category = [specifier propertyForKey:@"category"];
-    UIViewController *controller = nil;
-    if ([category isEqualToString:@"builtin"]) controller = [[ABMCBuiltinListController alloc] initWithPreferenceKey:_preferenceKey];
-    else if ([category isEqualToString:@"app"]) controller = [[ABMCApplicationListController alloc] initWithPreferenceKey:_preferenceKey];
-    else if ([category isEqualToString:@"shortcut"]) controller = [[ABMCShortcutListController alloc] initWithPreferenceKey:_preferenceKey];
-    else if ([category isEqualToString:@"link"]) controller = [[ABMCLinkListController alloc] initWithPreferenceKey:_preferenceKey];
-    if (controller) [self.navigationController pushViewController:controller animated:YES];
-}
-
-- (void)testCurrentAction:(PSSpecifier *)specifier {
-    if (!_currentValue.length || [_currentValue isEqualToString:@"none"]) return;
-    CFPreferencesSetAppValue(CFSTR("testAction"), (__bridge CFPropertyListRef)_currentValue, ABMCDomain);
-    CFPreferencesAppSynchronize(ABMCDomain);
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCTestNotification, NULL, NULL, YES);
-}
+@implementation ABMCActionListController { NSString *_key,*_fallback,*_current; }
+- (void)viewDidLoad {[super viewDidLoad];PSSpecifier*p=self.specifier;_key=[[p propertyForKey:@"key"]copy];_fallback=[[p propertyForKey:@"default"]copy];self.title=[p name].length?[p name]:@"选择动作";}
+- (void)viewWillAppear:(BOOL)animated {[super viewWillAppear:animated];CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain);_current=v?(__bridge_transfer NSString*)v:(_fallback?:@"none");_specifiers=nil;[self reloadSpecifiers];}
+- (NSArray*)specifiers {if(!_specifiers){NSMutableArray*a=[NSMutableArray array];[a addObject:[PSSpecifier groupSpecifierWithName:@"已选动作"]];PSSpecifier*chosen=[PSSpecifier preferenceSpecifierNamed:ActionTitle(_current) target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];[chosen setProperty:@YES forKey:@"selectedAction"];[a addObject:chosen];[a addObject:[PSSpecifier groupSpecifierWithName:@"动作测试"]];PSSpecifier*test=[PSSpecifier preferenceSpecifierNamed:@"开始测试" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];test->action=@selector(test:);[a addObject:test];NSArray*categories=@[@[@"基础动作",@"基础动作",@"builtin",@"hand.tap.fill"],@[@"打开应用",@"打开应用",@"app",@"app.badge.checkmark"],@[@"快捷方式",@"快捷方式",@"appshortcut",@"square.grid.2x2.fill"],@[@"快捷指令",@"快捷指令",@"shortcut",@"square.stack.3d.up.fill"],@[@"打开链接",@"打开链接",@"link",@"link"],@[@"预设链接",@"预设链接",@"preset",@"safari.fill"]];for(NSArray*x in categories){[a addObject:[PSSpecifier groupSpecifierWithName:x[0]]];PSSpecifier*s=[PSSpecifier preferenceSpecifierNamed:x[1] target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil];[s setProperty:x[2]forKey:@"category"];[s setProperty:x[3]forKey:@"iconToken"];s->action=@selector(open:);[a addObject:s];}_specifiers=a;}return _specifiers;}
+- (UITableViewCell*)tableView:(UITableView*)tableView cellForRowAtIndexPath:(NSIndexPath*)path {UITableViewCell*c=[super tableView:tableView cellForRowAtIndexPath:path];PSSpecifier*s=[self specifierAtIndexPath:path];c.accessoryView=nil;c.imageView.hidden=NO;c.imageView.image=nil;c.textLabel.textColor=UIColor.labelColor;c.textLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];if([s propertyForKey:@"selectedAction"]){ABMCApplyLargeIcon(c,ActionIcon(_current));}else{NSString*token=[s propertyForKey:@"iconToken"];if(token.length)ABMCApplyLargeIcon(c,ABMCTintedIcon(token,UIColor.systemBlueColor));}return c;}
+- (void)open:(PSSpecifier*)s {NSString*c=[s propertyForKey:@"category"];UIViewController*v=nil;if([c isEqualToString:@"builtin"])v=[[ABMCBuiltinListController alloc]initWithPreferenceKey:_key];else if([c isEqualToString:@"app"])v=[[ABMCApplicationListController alloc]initWithPreferenceKey:_key];else if([c isEqualToString:@"appshortcut"])v=[[ABMCAppShortcutListController alloc]initWithPreferenceKey:_key];else if([c isEqualToString:@"shortcut"])v=[[ABMCShortcutListController alloc]initWithPreferenceKey:_key];else if([c isEqualToString:@"link"])v=[[ABMCLinkListController alloc]initWithPreferenceKey:_key];else if([c isEqualToString:@"preset"])v=[[ABMCPresetLinkController alloc]initWithPreferenceKey:_key];if(v)[self.navigationController pushViewController:v animated:YES];}
+- (void)test:(PSSpecifier*)s {if(!_current.length||[_current isEqualToString:@"none"])return;CFPreferencesSetAppValue(CFSTR("testAction"),(__bridge CFPropertyListRef)_current,Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),TestNotice,NULL,NULL,YES);}
 @end

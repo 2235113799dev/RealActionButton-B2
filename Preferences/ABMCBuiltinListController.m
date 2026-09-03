@@ -11,19 +11,19 @@ static const ABMCBuiltinAction kActions[] = {
     {@"screenshot", @"截屏", @"viewfinder"}, {@"lock", @"锁屏", @"lock.fill"},
     {@"controlCenter", @"控制中心", @"switch.2"}, {@"notificationCenter", @"通知中心", @"bell.fill"},
     {@"settings", @"打开设置", @"gearshape.fill"}, {@"respring", @"重启界面", @"arrow.clockwise"},
-    {@"wechatScan", @"微信扫码", @"qrcode.viewfinder"},
-    {@"wechatPay", @"微信付款码", @"creditcard.fill"}, {@"alipayScan", @"支付宝扫码", @"qrcode.viewfinder"},
-    {@"alipayPay", @"支付宝付款码", @"creditcard.fill"}, {@"none", @"无操作", @"nosign"}
+    {@"wechatScan", @"微信扫码", @"qrcode.viewfinder"}, {@"wechatPay", @"微信付款码", @"creditcard.fill"},
+    {@"alipayScan", @"支付宝扫码", @"qrcode.viewfinder"}, {@"alipayPay", @"支付宝付款码", @"creditcard.fill"},
+    {@"none", @"无操作", @"nosign"}
 };
 
 @interface ABMCBuiltinListController () <UISearchBarDelegate>
 @end
 @implementation ABMCBuiltinListController { NSString *_preferenceKey; NSString *_query; }
-- (instancetype)initWithPreferenceKey:(NSString *)key { if ((self=[super initWithStyle:UITableViewStyleInsetGrouped])) { _preferenceKey=[key copy]; self.title=@"内置动作"; } return self; }
-- (void)viewDidLoad { [super viewDidLoad]; _query=@""; UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,68)]; UISearchBar *search=[[UISearchBar alloc] initWithFrame:CGRectInset(header.bounds,8,6)]; search.placeholder=@"搜索内置动作"; search.delegate=self; [header addSubview:search]; self.tableView.tableHeaderView=header; }
+- (instancetype)initWithPreferenceKey:(NSString *)key { if ((self=[super initWithStyle:UITableViewStyleInsetGrouped])) { _preferenceKey=[key copy]; self.title=@"基础动作"; } return self; }
+- (void)viewDidLoad { [super viewDidLoad]; _query=@""; UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,68)]; UISearchBar *search=[[UISearchBar alloc] initWithFrame:CGRectInset(header.bounds,8,6)]; search.placeholder=@"搜索基础动作"; search.delegate=self; [header addSubview:search]; self.tableView.tableHeaderView=header; }
 - (NSInteger)indexForFilteredRow:(NSInteger)row { NSInteger matched=0; for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++){ if(!_query.length || [kActions[i].title localizedCaseInsensitiveContainsString:_query]) { if(matched++==row) return i; } } return NSNotFound; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { NSInteger total=0; for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++) if(!_query.length||[kActions[i].title localizedCaseInsensitiveContainsString:_query]) total++; return total; }
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath { UITableViewCell *cell=[tableView dequeueReusableCellWithIdentifier:@"BuiltinCell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"BuiltinCell"]; NSInteger index=[self indexForFilteredRow:indexPath.row]; cell.imageView.image=ABMCTintedIcon(kActions[index].icon,UIColor.systemBlueColor); cell.textLabel.font=[UIFont systemFontOfSize:17]; cell.textLabel.text=kActions[index].title; CFStringRef value=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey,ABMCDomain); cell.accessoryType=value&&[(__bridge NSString *)value isEqualToString:kActions[index].identifier]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone; if(value) CFRelease(value); return cell; }
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath { UITableViewCell *cell=[tableView dequeueReusableCellWithIdentifier:@"BuiltinCell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"BuiltinCell"]; NSInteger index=[self indexForFilteredRow:indexPath.row]; ABMCApplyLargeIcon(cell,ABMCTintedIcon(kActions[index].icon,UIColor.systemBlueColor)); cell.textLabel.font=[UIFont systemFontOfSize:18]; cell.textLabel.text=kActions[index].title; CFStringRef value=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey,ABMCDomain); cell.accessoryType=value&&[(__bridge NSString *)value isEqualToString:kActions[index].identifier]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone; if(value) CFRelease(value); return cell; }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath { NSInteger index=[self indexForFilteredRow:indexPath.row]; NSString *action=kActions[index].identifier; CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey,(__bridge CFPropertyListRef)action,ABMCDomain); CFPreferencesAppSynchronize(ABMCDomain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),ABMCChanged,NULL,NULL,YES); [self.navigationController popViewControllerAnimated:YES]; }
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text { _query=[text copy] ?: @""; [self.tableView reloadData]; }
 @end

@@ -95,10 +95,10 @@ static NSString *titleForActionID(NSString *actionID) {
         [specs addObject:longPress];
 
         PSSpecifier *urlModeGroup = [PSSpecifier groupSpecifierWithName:@"链接打开方式"];
-        [urlModeGroup setProperty:@"开启时，所有内置和自定义 URL 使用异步全屏直达；关闭时恢复原始 URL 打开方式，可由 FV 等插件接管。" forKey:@"footerText"];
+        [urlModeGroup setProperty:@"开启时，预设链接和自定义链接使用全屏打开；关闭时恢复原始 URL 打开方式，可由其他 URL 插件接管。" forKey:@"footerText"];
         [specs addObject:urlModeGroup];
 
-        PSSpecifier *urlMode = [PSSpecifier preferenceSpecifierNamed:@"URL 全屏直达"
+        PSSpecifier *urlMode = [PSSpecifier preferenceSpecifierNamed:@"URL全屏"
                                                                target:self
                                                                   set:@selector(setURLOpenMode:specifier:)
                                                                   get:@selector(urlOpenModeForSpecifier:)
@@ -108,8 +108,25 @@ static NSString *titleForActionID(NSString *actionID) {
         [urlMode setProperty:@"urlOpenMode" forKey:@"key"];
         [urlMode setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [urlMode setProperty:@YES forKey:@"default"];
-        [urlMode setProperty:@"link.circle.fill" forKey:@"iconToken"];
+        [urlMode setProperty:@"link" forKey:@"iconToken"];
         [specs addObject:urlMode];
+
+        PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"应用启动方式"];
+        [launchGroup setProperty:@"开启时由系统以全屏方式启动应用或执行快捷方式；关闭时使用兼容启动路径，允许分屏类插件接管。快捷指令始终优先后台直接运行，只有后台接口不可用才使用此后备方式。" forKey:@"footerText"];
+        [specs addObject:launchGroup];
+        NSArray *launchModes = @[
+            @[@"应用全屏", @"appOpenMode", @"app.badge.checkmark"],
+            @[@"快捷方式全屏", @"appShortcutOpenMode", @"square.grid.2x2.fill"],
+            @[@"快捷指令全屏", @"shortcutOpenMode", @"square.stack.3d.up.fill"]
+        ];
+        for (NSArray *item in launchModes) {
+            PSSpecifier *mode = [PSSpecifier preferenceSpecifierNamed:item[0] target:self set:@selector(setOpenMode:specifier:) get:@selector(openModeForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
+            [mode setProperty:item[1] forKey:@"key"];
+            [mode setProperty:PREFS_DOMAIN forKey:@"defaults"];
+            [mode setProperty:@YES forKey:@"default"];
+            [mode setProperty:item[2] forKey:@"iconToken"];
+            [specs addObject:mode];
+        }
 
         _specifiers = specs;
     }
@@ -139,6 +156,24 @@ static NSString *titleForActionID(NSString *actionID) {
                                          (__bridge CFStringRef)PREFS_NOTIFICATION,
                                          NULL, NULL, YES);
 }
+- (NSNumber *)openModeForSpecifier:(PSSpecifier *)specifier {
+    NSString *key = [specifier propertyForKey:@"key"];
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PREFS_DOMAIN);
+    CFPropertyListRef value = CFPreferencesCopyAppValue((__bridge CFStringRef)key, (__bridge CFStringRef)PREFS_DOMAIN);
+    NSNumber *result = @YES;
+    if (value && CFGetTypeID(value) == CFBooleanGetTypeID()) result = @(CFBooleanGetValue((CFBooleanRef)value));
+    if (value) CFRelease(value);
+    return result;
+}
+
+- (void)setOpenMode:(id)value specifier:(PSSpecifier *)specifier {
+    NSString *key = [specifier propertyForKey:@"key"];
+    BOOL enabled = [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : YES;
+    CFPreferencesSetAppValue((__bridge CFStringRef)key, enabled ? kCFBooleanTrue : kCFBooleanFalse, (__bridge CFStringRef)PREFS_DOMAIN);
+    CFPreferencesAppSynchronize((__bridge CFStringRef)PREFS_DOMAIN);
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), (__bridge CFStringRef)PREFS_NOTIFICATION, NULL, NULL, YES);
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self reload];
@@ -160,14 +195,11 @@ static NSString *titleForActionID(NSString *actionID) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    cell.accessoryView = nil;
+    cell.imageView.hidden = NO;
+    cell.imageView.image = nil;
     NSString *icon = [specifier propertyForKey:@"iconToken"];
-    if (icon.length) {
-        UIImage *image = ABMCTintedIcon(icon, UIColor.systemBlueColor);
-        UIImageView *view = [[UIImageView alloc] initWithImage:image];
-        view.frame = CGRectMake(0, 0, 30, 30);
-        view.contentMode = UIViewContentModeScaleAspectFit;
-        cell.imageView.image = image;
-    }
+    if (icon.length) ABMCApplyLargeIcon(cell, ABMCTintedIcon(icon, UIColor.systemBlueColor));
     return cell;
 }
 

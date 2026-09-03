@@ -10,7 +10,9 @@
 @interface ABMCActionExecutor ()
 - (void)openFullscreenURL:(NSURL *)url;
 - (void)openSavedLink:(NSString *)linkID;
+- (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
+- (void)runAppShortcutBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)showControlCenter;
 - (void)showNotificationCenter;
 @end
@@ -22,6 +24,9 @@ BOOL ABMCPerformingDefaultAction = NO;
     NSString *_doubleAction;
     NSString *_longPressAction;
     BOOL _useDirectFullscreenURLs;
+    BOOL _useFullscreenApps;
+    BOOL _useFullscreenAppShortcuts;
+    BOOL _useFullscreenShortcuts;
 }
 
 + (instancetype)sharedExecutor {
@@ -60,6 +65,13 @@ BOOL ABMCPerformingDefaultAction = NO;
             _useDirectFullscreenURLs = CFBooleanGetValue((CFBooleanRef)mode);
         }
         if (mode) CFRelease(mode);
+        NSArray *modeKeys = @[@"appOpenMode", @"appShortcutOpenMode", @"shortcutOpenMode"];
+        BOOL *modeTargets[] = { &_useFullscreenApps, &_useFullscreenAppShortcuts, &_useFullscreenShortcuts };
+        for (NSUInteger index = 0; index < modeKeys.count; index++) {
+            CFPropertyListRef value = CFPreferencesCopyAppValue((__bridge CFStringRef)modeKeys[index], PREFS_DOMAIN);
+            *modeTargets[index] = (value && CFGetTypeID(value) == CFBooleanGetTypeID()) ? CFBooleanGetValue((CFBooleanRef)value) : YES;
+            if (value) CFRelease(value);
+        }
     }
 }
 
@@ -97,7 +109,7 @@ BOOL ABMCPerformingDefaultAction = NO;
     } else if ([actionID isEqualToString:@"flashlight"]) {
         [self toggleFlashlight];
     } else if ([actionID isEqualToString:@"camera"]) {
-        [self openApp:@"com.apple.camera"];
+        [self openApp:@"com.apple.camera" fullscreen:_useFullscreenApps];
     } else if ([actionID isEqualToString:@"silent"]) {
         [self toggleSilentMode];
     } else if ([actionID isEqualToString:@"screenshot"]) {
@@ -109,7 +121,7 @@ BOOL ABMCPerformingDefaultAction = NO;
     } else if ([actionID isEqualToString:@"notificationCenter"]) {
         [self showNotificationCenter];
     } else if ([actionID isEqualToString:@"settings"]) {
-        [self openApp:@"com.apple.Preferences"];
+        [self openApp:@"com.apple.Preferences" fullscreen:_useFullscreenApps];
     } else if ([actionID isEqualToString:@"respring"]) {
         [self respring];
     } else if ([actionID isEqualToString:@"wechatScan"]) {
@@ -121,11 +133,15 @@ BOOL ABMCPerformingDefaultAction = NO;
     } else if ([actionID isEqualToString:@"alipayPay"]) {
         [self openURLString:@"alipay://platformapi/startapp?appId=20000056"];
     } else if ([actionID hasPrefix:@"app:"]) {
-        [self openApp:[actionID substringFromIndex:4]];
+        BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenApps; }
+        [self openApp:[actionID substringFromIndex:4] fullscreen:fullscreen];
     } else if ([actionID hasPrefix:@"url:"]) {
         [self openURLString:[actionID substringFromIndex:4]];
     } else if ([actionID hasPrefix:@"link:"]) {
         [self openSavedLink:[actionID substringFromIndex:5]];
+    } else if ([actionID hasPrefix:@"appshortcut:"]) {
+        NSArray *parts = [[actionID substringFromIndex:12] componentsSeparatedByString:@"|"];
+        [self runAppShortcutBundleIdentifier:parts.firstObject type:(parts.count > 1 ? parts[1] : @"")];
     } else if ([actionID hasPrefix:@"shortcutid:"]) {
         NSString *payload = [actionID substringFromIndex:11];
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
@@ -295,24 +311,21 @@ BOOL ABMCPerformingDefaultAction = NO;
 - (void)showNotificationCenter {
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            Class c = NSClassFromString(@"SBNotificationCenterController");
-            SEL shared = NSSelectorFromString(@"sharedInstance");
-            id controller = c && [c respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(c, shared) : nil;
-            for (NSString *name in @[@"revealAnimated:", @"revealNotificationCenterAnimated:", @"presentAnimated:", @"_presentAnimated:"]) {
-                SEL selector = NSSelectorFromString(name);
-                if ([controller respondsToSelector:selector]) { ((void (*)(id, SEL, BOOL))objc_msgSend)(controller, selector, YES); return; }
-            }
-            // iOS 17 部分机型由主界面工作区而非旧控制器管理通知中心。
+            // iOS 17's accessibility SpringBoard server owns the reliable
+            // notification-center presentation path.
+            dlopen("/System/Library/PrivateFrameworks/AccessibilityUtilities.framework/AccessibilityUtilities", RTLD_LAZY | RTLD_LOCAL);
+            Class serverClass = NSClassFromString(@"AXSpringBoardServer");
+            SEL serverSelector = NSSelectorFromString(@"server");
+            id server = serverClass && [serverClass respondsToSelector:serverSelector] ? ((id (*)(id, SEL))objc_msgSend)(serverClass, serverSelector) : nil;
+            SEL show = NSSelectorFromString(@"showNotificationCenter:");
+            if ([server respondsToSelector:show] && ((BOOL (*)(id, SEL, BOOL))objc_msgSend)(server, show, YES)) return;
+            SEL plainShow = NSSelectorFromString(@"showNotificationCenter");
+            if ([server respondsToSelector:plainShow]) { ((void (*)(id, SEL))objc_msgSend)(server, plainShow); return; }
             Class workspaceClass = NSClassFromString(@"SBMainWorkspace");
             SEL sharedWorkspace = NSSelectorFromString(@"sharedInstance");
             id workspace = workspaceClass && [workspaceClass respondsToSelector:sharedWorkspace] ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, sharedWorkspace) : nil;
-            for (NSString *name in @[@"showNotificationCenter", @"_showNotificationCenter", @"showNotificationCenterAnimated:"]) {
-                SEL selector = NSSelectorFromString(name);
-                if (![workspace respondsToSelector:selector]) continue;
-                if ([name hasSuffix:@":"]) ((void (*)(id, SEL, BOOL))objc_msgSend)(workspace, selector, YES);
-                else ((void (*)(id, SEL))objc_msgSend)(workspace, selector);
-                return;
-            }
+            SEL workspaceShow = NSSelectorFromString(@"showNotificationCenter");
+            if ([workspace respondsToSelector:workspaceShow]) ((void (*)(id, SEL))objc_msgSend)(workspace, workspaceShow);
         } @catch (NSException *exception) {}
     });
 }
@@ -349,30 +362,26 @@ BOOL ABMCPerformingDefaultAction = NO;
 
 #pragma mark - Open App
 
-- (void)openApp:(NSString *)bundleID {
+- (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen {
     if (!bundleID.length) return;
-
     NSString *bid = [bundleID copy];
     dispatch_async(dispatch_get_main_queue(), ^{
         @autoreleasepool {
             @try {
-                id app = [UIApplication sharedApplication];
-
-                // SpringBoard-native launch. The whole external launch is
-                // deferred so the Action Button callback returns immediately.
-                SEL launchSel = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
-                if ([app respondsToSelector:launchSel]) {
-                    ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(app, launchSel, bid, NO);
+                id application = UIApplication.sharedApplication;
+                SEL direct = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
+                if (fullscreen && [application respondsToSelector:direct]) {
+                    ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(application, direct, bid, NO);
                     return;
                 }
-
-                Class workspace = NSClassFromString(@"LSApplicationWorkspace");
-                SEL defaultSel = NSSelectorFromString(@"defaultWorkspace");
-                id instance = (workspace && [workspace respondsToSelector:defaultSel]) ? ((id (*)(id, SEL))objc_msgSend)(workspace, defaultSel) : nil;
-                SEL openSel = NSSelectorFromString(@"openApplicationWithBundleID:");
-                if (instance && [instance respondsToSelector:openSel]) {
-                    ((BOOL (*)(id, SEL, id))objc_msgSend)(instance, openSel, bid);
-                }
+                // Compatibility route: preserves interception by existing
+                // split-screen / URL-routing tweaks without forcing a mode.
+                Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+                SEL defaultWorkspace = NSSelectorFromString(@"defaultWorkspace");
+                id workspace = (workspaceClass && [workspaceClass respondsToSelector:defaultWorkspace]) ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, defaultWorkspace) : nil;
+                SEL open = NSSelectorFromString(@"openApplicationWithBundleID:");
+                if ([workspace respondsToSelector:open]) ((BOOL (*)(id, SEL, id))objc_msgSend)(workspace, open, bid);
+                else if ([application respondsToSelector:direct]) ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(application, direct, bid, NO);
             } @catch (NSException *exception) {}
         }
     });
@@ -450,32 +459,81 @@ BOOL ABMCPerformingDefaultAction = NO;
     });
 }
 
+- (void)runAppShortcutBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
+    if (!bundleIdentifier.length || !type.length) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenAppShortcuts; }
+        BOOL activated = NO;
+        @try {
+            Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+            SEL proxyForID = NSSelectorFromString(@"applicationProxyForIdentifier:");
+            id proxy = [proxyClass respondsToSelector:proxyForID] ? ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxyForID, bundleIdentifier) : nil;
+            SEL itemsSelector = NSSelectorFromString(@"staticShortcutItems");
+            NSArray *items = [proxy respondsToSelector:itemsSelector] ? ((id (*)(id, SEL))objc_msgSend)(proxy, itemsSelector) : nil;
+            id target = nil;
+            for (id item in items) {
+                SEL typeSelector = NSSelectorFromString(@"type");
+                NSString *itemType = [item respondsToSelector:typeSelector] ? ((id (*)(id, SEL))objc_msgSend)(item, typeSelector) : nil;
+                if ([itemType isEqualToString:type]) { target = item; break; }
+            }
+            // This is the only system API that executes an App Shortcut item.
+            // It is used in either display mode so the selected operation is
+            // never silently replaced by merely opening the application.
+            Class iconView = NSClassFromString(@"SBIconView");
+            SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
+            if (target && [iconView respondsToSelector:activate]) {
+                ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconView, activate, target, bundleIdentifier, nil);
+                activated = YES;
+            }
+        } @catch (NSException *exception) {}
+        // Compatibility path is only a failure fallback. It allows a user's
+        // split-screen launcher to intercept without dropping the action.
+        if (!activated && !fullscreen) [self openApp:bundleIdentifier fullscreen:NO];
+    });
+}
+
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name {
     if (!identifier.length && !name.length) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        BOOL handled = NO;
+        __block id coordinator = nil;
+        BOOL submitted = NO;
         @try {
-            // SpringBoard's native shortcut activation executes the selected
-            // workflow directly; it does not require opening the Shortcuts UI.
             dlopen("/System/Library/PrivateFrameworks/WorkflowKit.framework/WorkflowKit", RTLD_LAZY | RTLD_LOCAL);
-            Class iconControllerClass = NSClassFromString(@"SBIconController");
-            SEL shared = NSSelectorFromString(@"sharedInstance");
-            id iconController = (iconControllerClass && [iconControllerClass respondsToSelector:shared]) ? ((id (*)(id, SEL))objc_msgSend)(iconControllerClass, shared) : nil;
+            dlopen("/System/Library/PrivateFrameworks/WorkflowUI.framework/WorkflowUI", RTLD_LAZY | RTLD_LOCAL);
+            Class databaseClass = NSClassFromString(@"WFDatabase");
+            id database = [databaseClass respondsToSelector:NSSelectorFromString(@"defaultDatabase")] ? ((id (*)(id, SEL))objc_msgSend)(databaseClass, NSSelectorFromString(@"defaultDatabase")) : nil;
+            SEL referenceSelector = NSSelectorFromString(@"referenceForWorkflowID:");
+            id reference = [database respondsToSelector:referenceSelector] ? ((id (*)(id, SEL, id))objc_msgSend)(database, referenceSelector, identifier) : nil;
+            Class coordinatorClass = NSClassFromString(@"WFLibraryRunCoordinator");
+            SEL initializer = NSSelectorFromString(@"initWithSource:database:");
+            SEL run = NSSelectorFromString(@"runWorkflowReference:fromSource:withInput:requestOutput:runViewSource:completionHandler:");
+            if (reference && [coordinatorClass instancesRespondToSelector:initializer]) {
+                coordinator = ((id (*)(id, SEL, id, id))objc_msgSend)([coordinatorClass alloc], initializer, @"RealActionButton", database);
+                if ([coordinator respondsToSelector:run]) {
+                    id retainedCoordinator = coordinator;
+                    ((void (*)(id, SEL, id, id, id, BOOL, id, id))objc_msgSend)(coordinator, run, reference, @"RealActionButton", nil, NO, nil, ^(id output, NSError *error) { (void)retainedCoordinator; });
+                    submitted = YES;
+                }
+            }
+            // Correct iOS 17 fallback: this is a class method of SBIconView.
+            if (!submitted) {
+            BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenShortcuts; }
             Class workflowClass = NSClassFromString(@"WFWorkflow");
             SEL init = NSSelectorFromString(@"initWithWorkflowIdentifier:");
-            id workflow = workflowClass && [workflowClass instancesRespondToSelector:init] ? ((id (*)(id, SEL, id))objc_msgSend)([workflowClass alloc], init, identifier) : nil;
-            for (NSString *method in @[@"activateShortcut:withBundleIdentifier:forIconView:", @"activateShortcut:forIconView:"]) {
-                SEL selector = NSSelectorFromString(method);
-                if (!workflow || ![iconController respondsToSelector:selector]) continue;
-                if ([method isEqualToString:@"activateShortcut:withBundleIdentifier:forIconView:"]) ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconController, selector, workflow, @"is.workflow.my.app", nil);
-                else ((void (*)(id, SEL, id, id))objc_msgSend)(iconController, selector, workflow, nil);
-                handled = YES;
-                break;
+            id workflow = [workflowClass instancesRespondToSelector:init] ? ((id (*)(id, SEL, id))objc_msgSend)([workflowClass alloc], init, identifier) : nil;
+            Class iconView = NSClassFromString(@"SBIconView");
+            SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
+            if (workflow && [iconView respondsToSelector:activate]) {
+                ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconView, activate, workflow, @"is.workflow.my.app", nil);
+                submitted = YES;
+            } else if (!fullscreen) {
+                // Compatibility route only when direct execution is unavailable.
+                [self runShortcut:name];
+                submitted = YES;
             }
+        }
         } @catch (NSException *exception) {}
-        // Name URL is intentionally only the last safe fallback on systems
-        // where the native SpringBoard shortcut selector is unavailable.
-        if (!handled) [self runShortcut:name];
+        if (!submitted) [self runShortcut:name];
     });
 }
 

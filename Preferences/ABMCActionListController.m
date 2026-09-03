@@ -78,7 +78,7 @@ static NSString *ABMCLinkTitle(NSString *linkID) {
     if (!_specifiers) {
         NSMutableArray *items = [NSMutableArray array];
         [items addObject:[PSSpecifier groupSpecifierWithName:@"已选动作"]];
-        PSSpecifier *chosen = [PSSpecifier preferenceSpecifierNamed:[self displayAction:_currentValue] target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];
+        PSSpecifier *chosen = [PSSpecifier preferenceSpecifierNamed:[self displayAction:_currentValue] target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
         [chosen setProperty:@YES forKey:@"chosenAction"];
         [items addObject:chosen];
 

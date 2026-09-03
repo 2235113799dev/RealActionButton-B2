@@ -287,6 +287,12 @@ static BOOL ABMCColumnLooksLike(NSString *name, NSArray *candidates) {
     return action;
 }
 
+- (PSSpecifier *)searchSpecifier:(NSString *)group {
+    PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:@"" target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];
+    [spec setProperty:group forKey:@"searchGroup"];
+    return spec;
+}
+
 - (PSSpecifier *)placeholderSpecifier:(NSString *)text {
     PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:text target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];
     [spec setProperty:@YES forKey:@"placeholder"];
@@ -344,7 +350,7 @@ static BOOL ABMCColumnLooksLike(NSString *name, NSArray *candidates) {
 }
 
 - (NSArray *)specifiers {
-    if (!_searches) _searches = [@{ @"builtin": @"", @"app": @"", @"shortcut": @"", @"link": @"" }.mutableCopy];
+    if (!_searches) _searches = [@{ @"builtin": @"", @"app": @"", @"shortcut": @"", @"link": @"" } mutableCopy];
     [self loadDataIfNeeded];
     if (!_currentValue.length) [self loadCurrentValue];
     NSMutableArray *result = [NSMutableArray array];

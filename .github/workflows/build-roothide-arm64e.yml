@@ -1,0 +1,57 @@
+name: Build RealActionButton-B2 RootHide
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-roothide-arm64e:
+    runs-on: macos-14
+    env:
+      THEOS: ${{ github.workspace }}/theos
+      SDK_VERSION: "16.5"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          brew update || true
+          brew install ldid xz make libarchive openssl pkg-config
+          echo "$(brew --prefix)/opt/make/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Set up RootHide Theos
+        run: |
+          set -e
+          git clone --recursive --depth=1 https://github.com/roothide/theos.git "$THEOS"
+
+      - name: Install iPhoneOS SDK
+        run: |
+          set -e
+          mkdir -p "$THEOS/sdks"
+          git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks.git "$RUNNER_TEMP/sdks"
+          cd "$RUNNER_TEMP/sdks"
+          git sparse-checkout set --no-cone "iPhoneOS${SDK_VERSION}.sdk"
+          git checkout
+          cp -R "iPhoneOS${SDK_VERSION}.sdk" "$THEOS/sdks/"
+
+      - name: Build RootHide arm64e package
+        run: |
+          set -e
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide ARCHS=arm64e
+          mkdir -p out
+          find packages -maxdepth 1 -type f -name '*.deb' -exec cp {} out/ \;
+          test "$(find out -maxdepth 1 -type f -name '*_iphoneos-arm64e.deb' | wc -l)" -eq 1
+
+      - name: Upload RootHide arm64e deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: RealActionButton-B2-roothide-arm64e
+          path: out/*.deb
+          if-no-files-found: error

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>按键动作</string>
+			<key>footerText</key><string>单击在松开后最多等待 240 毫秒；第二次松开后会立即执行双击。长按仍由系统原生时机识别。</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSLinkCell</string>
+			<key>detail</key><string>ABMCActionListController</string>
+			<key>key</key><string>singleClickAction</string>
+			<key>label</key><string>单击动作</string>
+			<key>default</key><string>default</string>
+			<key>defaults</key><string>com.huynguyen.actionbuttonmulticlick</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSLinkCell</string>
+			<key>detail</key><string>ABMCActionListController</string>
+			<key>key</key><string>doubleClickAction</string>
+			<key>label</key><string>双击动作</string>
+			<key>default</key><string>none</string>
+			<key>defaults</key><string>com.huynguyen.actionbuttonmulticlick</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSLinkCell</string>
+			<key>detail</key><string>ABMCActionListController</string>
+			<key>key</key><string>longPressAction</string>
+			<key>label</key><string>长按动作</string>
+			<key>default</key><string>default</string>
+			<key>defaults</key><string>com.huynguyen.actionbuttonmulticlick</string>
+		</dict>
+	</array>
+	<key>title</key><string>RealActionButton</string>
+</dict>
+</plist>

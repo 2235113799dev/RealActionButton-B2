@@ -52,7 +52,7 @@ static NSString *ABMCNormalizeLinkURL(NSString *value) {
 - (instancetype)initWithPreferenceKey:(NSString *)key {
     if ((self = [super init])) {
         _preferenceKey = [key copy];
-        _searches = [@{ @"builtin": @"", @"app": @"", @"shortcut": @"", @"link": @"" }.mutableCopy];
+        _searches = [@{ @"builtin": @"", @"app": @"", @"shortcut": @"", @"link": @"" } mutableCopy];
     }
     return self;
 }
@@ -119,7 +119,7 @@ static NSString *ABMCNormalizeLinkURL(NSString *value) {
             NSString *bundleID = [app respondsToSelector:@selector(bundleIdentifier)] ? [app bundleIdentifier] : nil;
             NSURL *bundleURL = [app respondsToSelector:@selector(bundleURL)] ? [app bundleURL] : nil;
             NSString *path = bundleURL.path;
-            NSString *type = [app respondsToSelector:@selector(applicationType)] ? [app applicationType] : nil;
+            NSString *type = [app respondsToSelector:NSSelectorFromString(@"applicationType")] ? ((id (*)(id, SEL))objc_msgSend)(app, NSSelectorFromString(@"applicationType")) : nil;
             // A real application bundle is the reliable boundary here. It
             // includes App Store, stock, TrollStore and Sileo .app bundles,
             // while excluding daemons, extensions and system services.
@@ -222,7 +222,7 @@ static BOOL ABMCColumnLooksLike(NSString *name, NSArray *candidates) {
                         if (!columnText) continue;
                         NSString *column = [NSString stringWithUTF8String:(const char *)columnText];
                         if (!nameColumn && ABMCColumnLooksLike(column, @[@"name", @"title", @"workflowname", @"zname"])) nameColumn = column;
-                        if (!idColumn && ABMCColumnLooksLike(column, @"identifier")) idColumn = column;
+                        if (!idColumn && ABMCColumnLooksLike(column, @[@"identifier"])) idColumn = column;
                     }
                 }
                 if (columns) sqlite3_finalize(columns);
@@ -287,9 +287,9 @@ static BOOL ABMCColumnLooksLike(NSString *name, NSArray *candidates) {
     return action;
 }
 
-- (PSSpecifier *)searchSpecifier:(NSString *)group {
-    PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:@"" target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];
-    [spec setProperty:group forKey:@"searchGroup"];
+- (PSSpecifier *)placeholderSpecifier:(NSString *)text {
+    PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:text target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];
+    [spec setProperty:@YES forKey:@"placeholder"];
     return spec;
 }
 

@@ -108,18 +108,15 @@ static id ABMCInvoke(id target, NSString *name) { SEL selector=NSSelectorFromStr
             // 所有快捷指令页面对应的是 ZSHORTCUT：ZNAME 与 ZWORKFLOWID 一一对应。
             // 禁止读取 ZWORKFLOW/关联实体，避免出现“欢乐豆 + UUID”的错配记录。
             if(![table isEqualToString:@"ZSHORTCUT"]) continue;
-            sqlite3_stmt *columns=NULL;
-            BOOL hasTombstone=NO, hasHidden=NO;
-            if(sqlite3_prepare_v2(db,"PRAGMA table_info(ZSHORTCUT)",-1,&columns,NULL)==SQLITE_OK) while(sqlite3_step(columns)==SQLITE_ROW) {
-                const char *text=(const char *)sqlite3_column_text(columns,1); if(!text)continue;
-                NSString *column=[[NSString stringWithUTF8String:text] uppercaseString];
-                if([column isEqualToString:@"ZTOMBSTONED"])hasTombstone=YES;
-                if([column isEqualToString:@"ZHIDDENFROMLIBRARYANDSYNC"])hasHidden=YES;
+            NSString *escaped=[table stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""]; sqlite3_stmt *columns=NULL;
+            NSString *nameColumn=nil,*idColumn=nil; NSString *pragma=[NSString stringWithFormat:@"PRAGMA table_info(\"%@\")",escaped];
+            if(sqlite3_prepare_v2(db,pragma.UTF8String,-1,&columns,NULL)==SQLITE_OK) while(sqlite3_step(columns)==SQLITE_ROW) {
+                const char *columnText=(const char *)sqlite3_column_text(columns,1); if(!columnText)continue; NSString *column=[NSString stringWithUTF8String:columnText],*field=column.lowercaseString;
+                if(!nameColumn&&([field containsString:@"name"]||[field containsString:@"title"]))nameColumn=column;
+                if(!idColumn&&([field containsString:@"workflowidentifier"]||[field containsString:@"workflowid"]||[field containsString:@"uuid"]||[field isEqualToString:@"identifier"]||[field isEqualToString:@"zidentifier"]))idColumn=column;
             }
-            if(columns)sqlite3_finalize(columns);
-            NSMutableString *query=[@"SELECT ZNAME,ZWORKFLOWID FROM ZSHORTCUT WHERE ZNAME IS NOT NULL AND length(trim(ZNAME))>0 AND ZWORKFLOWID IS NOT NULL AND length(ZWORKFLOWID)>0 " mutableCopy];
-            if(hasTombstone)[query appendString:@"AND COALESCE(ZTOMBSTONED,0)=0 "];
-            if(hasHidden)[query appendString:@"AND COALESCE(ZHIDDENFROMLIBRARYANDSYNC,0)=0 "];
+            if(columns)sqlite3_finalize(columns); if(!nameColumn||!idColumn)continue;
+            NSString *query=[NSString stringWithFormat:@"SELECT \"%@\",\"%@\" FROM \"%@\" WHERE \"%@\" IS NOT NULL",[nameColumn stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""],[idColumn stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""],escaped,[nameColumn stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""]];
             sqlite3_stmt *rows=NULL; if(sqlite3_prepare_v2(db,query.UTF8String,-1,&rows,NULL)!=SQLITE_OK)continue;
             while(sqlite3_step(rows)==SQLITE_ROW) { const char *nameText=(const char *)sqlite3_column_text(rows,0); NSString *name=nameText?[NSString stringWithUTF8String:nameText]:nil; [self addName:name identifier:ABMCUUIDFromColumn(rows,1) into:results]; }
             sqlite3_finalize(rows);

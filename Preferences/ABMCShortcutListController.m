@@ -1,6 +1,7 @@
 #import "ABMCShortcutListController.h"
 #import "ABMCUIHelpers.h"
 #import <objc/message.h>
+#import <dlfcn.h>
 #import <sqlite3.h>
 #import <uuid/uuid.h>
 

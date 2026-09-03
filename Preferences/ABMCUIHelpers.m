@@ -79,7 +79,6 @@ NSArray *ABMCInstalledApplications(void) {
 #define ABMCUnifiedPointSizeKey CFSTR("unifiedIconSize")
 #define ABMCUnifiedColorKey CFSTR("unifiedIconColor")
 
-BOOL ABMCUnifiedIconSizingEnabled(void) { return YES; }
 CGFloat ABMCUnifiedIconSize(void) {
     CFPropertyListRef value=CFPreferencesCopyAppValue(ABMCUnifiedPointSizeKey,ABMCDomain);
     CGFloat size=value&&CFGetTypeID(value)==CFNumberGetTypeID()?[(__bridge NSNumber *)value doubleValue]:30.0;
@@ -119,7 +118,7 @@ void ABMCShowPresentationEditor(UIViewController *controller, NSString *key, NSS
     NSDictionary *saved = PresentationOverrides()[key];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"修改显示外观" message:@"只修改 RealActionButton 内的名称和图标，不会修改应用或快捷指令本体。图标可填 SF Symbol 名称或 App Bundle ID；留空恢复默认图标。" preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *f) { f.placeholder=@"显示名称"; f.text=ABMCDisplayTitle(key, defaultTitle); }];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *f) { f.placeholder=@"图标（SF Symbol / Bundle ID）"; f.text=[saved[@"icon"] isKindOfClass:NSString.class] ? saved[@"icon"] : @""; f.autocorrectionType=UITextAutocorrectionTypeNo; f.autocapitalizationType=UITextAutocapitalizationTypeNone; }];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *f) { f.placeholder=@"图标（SF Symbol / Bundle ID）"; f.text=[saved[@"icon"] isKindOfClass:NSString.class] && [saved[@"icon"] length] ? saved[@"icon"] : (defaultIcon ?: @""); f.autocorrectionType=UITextAutocorrectionTypeNo; f.autocapitalizationType=UITextAutocapitalizationTypeNone; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"恢复默认" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a) { ABMCClearPresentationOverride(key); if(completion)completion(); }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) { NSString *title=[alert.textFields[0].text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]; NSString *icon=[alert.textFields[1].text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]; if(!title.length||title.length>100)return; NSMutableDictionary *all=[PresentationOverrides() mutableCopy]; all[key]=@{ @"title":title, @"icon":icon ?: @"" }; CFPreferencesSetAppValue(ABMCPresentationKey, (__bridge CFPropertyListRef)all, ABMCDomain); CFPreferencesAppSynchronize(ABMCDomain); if(completion)completion(); }]];
@@ -205,7 +204,7 @@ UIImage *ABMCWorkflowIconForName(NSString *name) {
 }
 
 UIImage *ABMCIconImage(NSString *token) {
-    CGFloat pointSize=ABMCUnifiedIconSizingEnabled()?ABMCUnifiedIconSize():24.0;
+    CGFloat pointSize=ABMCUnifiedIconSize();
     UIImageSymbolConfiguration *config=[UIImageSymbolConfiguration configurationWithPointSize:pointSize weight:UIImageSymbolWeightMedium];
     // Ask for a symbol once. Looking up a non-symbol as an application icon
     // first created the generic blueprint placeholder shown in the report.
@@ -213,7 +212,7 @@ UIImage *ABMCIconImage(NSString *token) {
     return symbol ?: ABMCIconImageForBundleID(token) ?: [UIImage systemImageNamed:@"app.fill" withConfiguration:config];
 }
 UIImage *ABMCTintedIcon(NSString *token, UIColor *color) {
-    CGFloat pointSize=ABMCUnifiedIconSizingEnabled()?ABMCUnifiedIconSize():24.0;
+    CGFloat pointSize=ABMCUnifiedIconSize();
     UIImage *symbol=[UIImage systemImageNamed:token withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:pointSize weight:UIImageSymbolWeightMedium]];
     // Existing feature rows pass systemBlue. Treat that as the configurable
     // global accent while preserving explicit secondary/error colors.
@@ -225,7 +224,7 @@ void ABMCApplyLargeIcon(UITableViewCell *cell, UIImage *image) {
     // layouts (especially PSSwitchCell); overriding them caused icon movement
     // and switches appearing on the left after cell reuse.
     cell.imageView.hidden = NO;
-    cell.imageView.image = ABMCUnifiedIconSizingEnabled() ? NormalizedIcon(image) : image;
+    cell.imageView.image = NormalizedIcon(image) ?: image;
     cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
     cell.imageView.tintColor = UIColor.systemBlueColor;
 }

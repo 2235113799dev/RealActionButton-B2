@@ -29,7 +29,6 @@ NSString *ABMCDisplayTitle(NSString *key, NSString *fallback);
 NSString *ABMCDisplayIconToken(NSString *key, NSString *fallback);
 void ABMCShowPresentationEditor(UIViewController *controller, NSString *key, NSString *defaultTitle, NSString *defaultIcon, dispatch_block_t completion);
 void ABMCClearPresentationOverride(NSString *key);
-BOOL ABMCUnifiedIconSizingEnabled(void);
 CGFloat ABMCUnifiedIconSize(void);
 UIColor *ABMCUnifiedIconColor(void);
 NSString *ABMCUnifiedIconColorHex(void);

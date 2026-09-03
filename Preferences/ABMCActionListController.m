@@ -52,6 +52,7 @@ static NSString *PresentationKeyForAction(NSString *action) { return [@"action."
 static NSString *DisplayedTitleForAction(NSString *action) { return ABMCDisplayTitle(PresentationKeyForAction(action), TitleForAction(action)); }
 static UIImage *IconForAction(NSString *action) {
     const ActionInfo *info = InfoForAction(action);
+    if ([action hasPrefix:@"shortcutpanel:"]) return ABMCTintedIcon(@"square.grid.2x2.fill", nil);
     if ([action hasPrefix:@"shortcutid:"]) {
         NSArray *parts=[[action substringFromIndex:11] componentsSeparatedByString:@"|"];
         if(parts.count>3){UIImage *workflow=ABMCWorkflowIconImage([parts[2] integerValue],[parts[3] longLongValue]);if(workflow)return workflow;}
@@ -92,7 +93,8 @@ static UIImage *IconForAction(NSString *action) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell=[super tableView:tableView cellForRowAtIndexPath:indexPath]; PSSpecifier *s=[self specifierAtIndexPath:indexPath];
     cell.accessoryView=nil; cell.imageView.hidden=NO; cell.imageView.image=nil; cell.textLabel.textColor=UIColor.labelColor; cell.textLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];
-    if ([s propertyForKey:@"selectedAction"]) ABMCApplyLargeIcon(cell, IconForAction(_current));
+    if ([s propertyForKey:@"selectedAction"]) { ABMCApplyLargeIcon(cell, IconForAction(_current)); cell.textLabel.textColor=ABMCUnifiedIconColor(); }
+    else if ([[s propertyForKey:@"iconToken"] length]) { ABMCApplyLargeIcon(cell, ABMCTintedIcon([s propertyForKey:@"iconToken"], nil)); }
     else { NSString *key=[s propertyForKey:@"presentationKey"],*fallback=[s propertyForKey:@"defaultIcon"]; if (fallback.length) { NSString *token=ABMCDisplayIconToken(key,fallback); ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(@"square.grid.2x2.fill",nil)); } }
     return cell;
 }

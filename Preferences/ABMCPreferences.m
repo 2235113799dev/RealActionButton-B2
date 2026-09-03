@@ -1,6 +1,7 @@
 #import "ABMCPreferences.h"
 #import "ABMCUIHelpers.h"
 #import <Preferences/PSSpecifier.h>
+#import <Preferences/PSTableCell.h>
 
 #define PREFS_DOMAIN @"com.huynguyen.actionbuttonmulticlick"
 #define PREFS_NOTIFICATION @"com.huynguyen.actionbuttonmulticlick/prefsChanged"
@@ -21,7 +22,7 @@ static NSString *titleForActionID(NSString *actionID) {
     if ([actionID isEqualToString:@"wechatPay"]) return @"微信付款码";
     if ([actionID isEqualToString:@"alipayScan"]) return @"支付宝扫码";
     if ([actionID isEqualToString:@"alipayPay"]) return @"支付宝付款码";
-    if ([actionID hasPrefix:@"app:"]) return [NSString stringWithFormat:@"应用：%@", [actionID substringFromIndex:4]];
+    if ([actionID hasPrefix:@"app:"]) return [actionID substringFromIndex:4];
     if ([actionID hasPrefix:@"shortcutid:"]) {
         NSString *payload = [actionID substringFromIndex:11];
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
@@ -39,9 +40,9 @@ static NSString *titleForActionID(NSString *actionID) {
             }
         }
         if (links) CFRelease(links);
-        return title.length ? title : @"链接（未找到）";
+        return title.length ? title : @"URL（未找到）";
     }
-    if ([actionID hasPrefix:@"url:"]) return [NSString stringWithFormat:@"链接：%@", [actionID substringFromIndex:4]];
+    if ([actionID hasPrefix:@"url:"]) return [NSString stringWithFormat:@"URL：%@", [actionID substringFromIndex:4]];
     return actionID;
 }
 
@@ -94,26 +95,24 @@ static NSString *titleForActionID(NSString *actionID) {
         [longPress setProperty:@"hand.tap.fill" forKey:@"iconToken"];
         [specs addObject:longPress];
 
-        PSSpecifier *urlModeGroup = [PSSpecifier groupSpecifierWithName:@"链接打开方式"];
-        [urlModeGroup setProperty:@"开启时，预设链接和自定义链接使用全屏打开；关闭时恢复原始 URL 打开方式，可由其他 URL 插件接管。" forKey:@"footerText"];
-        [specs addObject:urlModeGroup];
+        PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"启动方式"];
+        [launchGroup setProperty:@"开启时优先由系统全屏执行；关闭时使用兼容启动路线，供 FV 等分屏插件接管。快捷指令始终优先后台直接运行，只有后台接口不可用才使用后备启动方式。" forKey:@"footerText"];
+        [specs addObject:launchGroup];
 
         PSSpecifier *urlMode = [PSSpecifier preferenceSpecifierNamed:@"URL全屏"
                                                                target:self
-                                                                  set:@selector(setURLOpenMode:specifier:)
-                                                                  get:@selector(urlOpenModeForSpecifier:)
+                                                                  set:@selector(setOpenMode:specifier:)
+                                                                  get:@selector(openModeForSpecifier:)
                                                                detail:Nil
                                                                  cell:PSSwitchCell
                                                                  edit:Nil];
         [urlMode setProperty:@"urlOpenMode" forKey:@"key"];
+        [urlMode setProperty:@"urlOpenMode" forKey:@"id"];
         [urlMode setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [urlMode setProperty:@YES forKey:@"default"];
         [urlMode setProperty:@"link" forKey:@"iconToken"];
         [specs addObject:urlMode];
 
-        PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"应用启动方式"];
-        [launchGroup setProperty:@"开启时由系统以全屏方式启动应用或执行快捷方式；关闭时使用兼容启动路径，允许分屏类插件接管。快捷指令始终优先后台直接运行，只有后台接口不可用才使用此后备方式。" forKey:@"footerText"];
-        [specs addObject:launchGroup];
         NSArray *launchModes = @[
             @[@"应用全屏", @"appOpenMode", @"app.badge.checkmark"],
             @[@"快捷方式全屏", @"appShortcutOpenMode", @"square.grid.2x2.fill"],
@@ -122,6 +121,7 @@ static NSString *titleForActionID(NSString *actionID) {
         for (NSArray *item in launchModes) {
             PSSpecifier *mode = [PSSpecifier preferenceSpecifierNamed:item[0] target:self set:@selector(setOpenMode:specifier:) get:@selector(openModeForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
             [mode setProperty:item[1] forKey:@"key"];
+            [mode setProperty:item[1] forKey:@"id"];
             [mode setProperty:PREFS_DOMAIN forKey:@"defaults"];
             [mode setProperty:@YES forKey:@"default"];
             [mode setProperty:item[2] forKey:@"iconToken"];
@@ -133,29 +133,6 @@ static NSString *titleForActionID(NSString *actionID) {
     return _specifiers;
 }
 
-- (NSNumber *)urlOpenModeForSpecifier:(PSSpecifier *)specifier {
-    CFPreferencesAppSynchronize((__bridge CFStringRef)PREFS_DOMAIN);
-    CFPropertyListRef value = CFPreferencesCopyAppValue(CFSTR("urlOpenMode"), (__bridge CFStringRef)PREFS_DOMAIN);
-    NSNumber *result = @YES;
-    if (value && CFGetTypeID(value) == CFBooleanGetTypeID()) {
-        result = @(CFBooleanGetValue((CFBooleanRef)value));
-    }
-    if (value) CFRelease(value);
-    return result;
-}
-
-- (void)setURLOpenMode:(id)value specifier:(PSSpecifier *)specifier {
-    BOOL enabled = [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : YES;
-    CFPreferencesSetAppValue(CFSTR("urlOpenMode"),
-                             enabled ? kCFBooleanTrue : kCFBooleanFalse,
-                             (__bridge CFStringRef)PREFS_DOMAIN);
-    CFPreferencesAppSynchronize((__bridge CFStringRef)PREFS_DOMAIN);
-
-    // Update the already-running SpringBoard tweak immediately.
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                         (__bridge CFStringRef)PREFS_NOTIFICATION,
-                                         NULL, NULL, YES);
-}
 - (NSNumber *)openModeForSpecifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
     CFPreferencesAppSynchronize((__bridge CFStringRef)PREFS_DOMAIN);
@@ -190,16 +167,15 @@ static NSString *titleForActionID(NSString *actionID) {
             [spec setProperty:titleForActionID(actionID) forKey:@"cellValue"];
         }
     }
-    [self reloadSpecifierID:@"urlOpenMode"];
+    for (NSString *identifier in @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode", @"shortcutOpenMode"]) [self reloadSpecifierID:identifier];
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
-    cell.accessoryView = nil;
-    cell.imageView.hidden = NO;
-    cell.imageView.image = nil;
+    // PSSwitchCell owns the right-side switch. Assign its native icon property
+    // instead of touching imageView/accessoryView, which prevents misalignment.
     NSString *icon = [specifier propertyForKey:@"iconToken"];
-    if (icon.length) ABMCApplyLargeIcon(cell, ABMCTintedIcon(icon, UIColor.systemBlueColor));
+    if ([cell isKindOfClass:[PSTableCell class]]) ((PSTableCell *)cell).icon = icon.length ? ABMCTintedIcon(icon, UIColor.systemBlueColor) : nil;
     return cell;
 }
 

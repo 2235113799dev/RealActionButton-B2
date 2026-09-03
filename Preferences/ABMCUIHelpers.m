@@ -72,19 +72,34 @@ NSArray *ABMCInstalledApplications(void) {
     return result;
 }
 
-static UIImage *ScaledIcon(UIImage *image) {
+static UIImage *NormalizedIcon(UIImage *image) {
     if (!image) return nil;
-    const CGFloat side = 34.0;
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, UIScreen.mainScreen.scale);
-    [image drawInRect:CGRectMake(0, 0, side, side)];
+    // Every source (SF Symbol, app icon, workflow icon) gets the exact same
+    // 34pt canvas. We never mutate UITableViewCell.imageView's frame.
+    const CGFloat canvas = 34.0;
+    const CGFloat maximum = 30.0;
+    CGSize size = image.size;
+    CGFloat scale = (size.width > 0 && size.height > 0) ? MIN(maximum / size.width, maximum / size.height) : 1.0;
+    CGSize drawSize = CGSizeMake(MAX(1.0, size.width * scale), MAX(1.0, size.height * scale));
+    CGRect rect = CGRectMake((canvas - drawSize.width) * 0.5, (canvas - drawSize.height) * 0.5, drawSize.width, drawSize.height);
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(canvas, canvas), NO, UIScreen.mainScreen.scale);
+    [image drawInRect:rect];
     UIImage *result = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     return result;
 }
 UIImage *ABMCIconImageForBundleID(NSString *identifier) {
     if (!identifier.length) return nil;
-    @try { return ScaledIcon([UIImage _applicationIconImageForBundleIdentifier:identifier format:0 scale:UIScreen.mainScreen.scale]); }
-    @catch (NSException *exception) { return nil; }
+    static NSCache *cache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 160; });
+    UIImage *cached = [cache objectForKey:identifier];
+    if (cached) return cached;
+    @try {
+        UIImage *result = NormalizedIcon([UIImage _applicationIconImageForBundleIdentifier:identifier format:0 scale:UIScreen.mainScreen.scale]);
+        if (result) [cache setObject:result forKey:identifier];
+        return result;
+    } @catch (NSException *exception) { return nil; }
 }
 UIImage *ABMCIconImageForProxy(id application) { return ABMCIconImageForBundleID(ABMCBundleIdentifierForApplication(application)); }
 
@@ -122,10 +137,11 @@ UIImage *ABMCTintedIcon(NSString *token, UIColor *color) {
     return [UIImage systemImageNamed:token] ? [image imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal] : image;
 }
 void ABMCApplyLargeIcon(UITableViewCell *cell, UIImage *image) {
-    cell.accessoryView = nil;
+    // Never set imageView.frame or accessoryView here. Preferences owns those
+    // layouts (especially PSSwitchCell); overriding them caused icon movement
+    // and switches appearing on the left after cell reuse.
     cell.imageView.hidden = NO;
     cell.imageView.image = image;
-    cell.imageView.frame = CGRectMake(0, 0, 38, 38);
     cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
     cell.imageView.tintColor = UIColor.systemBlueColor;
 }

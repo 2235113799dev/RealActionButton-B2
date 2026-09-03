@@ -6,14 +6,85 @@
 
 @interface ABMCApplicationListController () <UISearchBarDelegate>
 @end
-@implementation ABMCApplicationListController { NSString *_key; NSArray *_apps; NSString *_query; ABMCApplicationKind _kind; UISegmentedControl *_segments; }
-- (instancetype)initWithPreferenceKey:(NSString *)key { if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_key=[key copy];self.title=@"应用列表";}return self; }
-- (void)viewDidLoad { [super viewDidLoad];_query=@"";_kind=ABMCApplicationKindAll;UIView*h=[[UIView alloc]initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,116)];UISearchBar*s=[[UISearchBar alloc]initWithFrame:CGRectMake(8,4,h.bounds.size.width-16,56)];s.placeholder=@"搜索应用";s.delegate=self;[h addSubview:s];_segments=[[UISegmentedControl alloc]initWithItems:@[@"所有应用",@"用户应用",@"巨魔应用",@"系统应用"]];_segments.frame=CGRectMake(10,68,h.bounds.size.width-20,36);_segments.selectedSegmentIndex=0;[_segments addTarget:self action:@selector(changeKind:) forControlEvents:UIControlEventValueChanged];[h addSubview:_segments];self.tableView.tableHeaderView=h;[self reloadApplications]; }
-- (void)reloadApplications { NSMutableArray *a=[NSMutableArray array];for(id app in ABMCInstalledApplications()){NSString*bid=ABMCBundleIdentifierForApplication(app),*name=ABMCDisplayNameForApplication(app);if(bid.length&&name.length)[a addObject:@{ @"id":bid,@"name":name,@"kind":@(ABMCApplicationKindForProxy(app)) }];}_apps=[a sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*x,NSDictionary*y){return[x[@"name"] localizedCaseInsensitiveCompare:y[@"name"]];}];[self.tableView reloadData]; }
-- (void)changeKind:(UISegmentedControl *)sender {_kind=sender.selectedSegmentIndex;[self.tableView reloadData];}
-- (NSArray *)visibleApps { NSMutableArray*r=[NSMutableArray array];for(NSDictionary*x in _apps?:@[]){if(_kind!=ABMCApplicationKindAll&&[x[@"kind"]integerValue]!=_kind)continue;if(_query.length&&![x[@"name"] localizedCaseInsensitiveContainsString:_query]&&![x[@"id"] localizedCaseInsensitiveContainsString:_query])continue;[r addObject:x];}return r; }
-- (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return self.visibleApps.count;}
-- (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)p { UITableViewCell*c=[t dequeueReusableCellWithIdentifier:@"App"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"App"];NSDictionary*x=self.visibleApps[p.row];NSString*bid=x[@"id"];ABMCApplyLargeIcon(c,ABMCTintedIcon(@"app.badge.checkmark",UIColor.systemBlueColor));c.textLabel.font=[UIFont systemFontOfSize:18];c.detailTextLabel.font=[UIFont systemFontOfSize:14];c.textLabel.text=x[@"name"];c.detailTextLabel.text=bid;dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{UIImage*i=ABMCIconImageForBundleID(bid);if(!i)return;dispatch_async(dispatch_get_main_queue(),^{NSIndexPath*now=[t indexPathForCell:c];if(now&&now.row<self.visibleApps.count&&[self.visibleApps[now.row][@"id"]isEqualToString:bid])ABMCApplyLargeIcon(c,i);});});CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain);c.accessoryType=v&&[(__bridge NSString*)v isEqualToString:[@"app:"stringByAppendingString:bid]]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;if(v)CFRelease(v);return c; }
-- (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p {NSString*a=[@"app:"stringByAppendingString:self.visibleApps[p.row][@"id"]];CFPreferencesSetAppValue((__bridge CFStringRef)_key,(__bridge CFPropertyListRef)a,Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),Changed,NULL,NULL,YES);[self.navigationController popViewControllerAnimated:YES];}
-- (void)searchBar:(UISearchBar *)s textDidChange:(NSString *)text {_query=[text copy]?:@"";[self.tableView reloadData];}
+
+@implementation ABMCApplicationListController {
+    NSString *_preferenceKey;
+    NSArray<NSDictionary *> *_applications;
+    NSString *_query;
+    ABMCApplicationKind _kind;
+}
+
+- (instancetype)initWithPreferenceKey:(NSString *)key {
+    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
+        _preferenceKey = [key copy];
+        self.title = @"应用列表";
+    }
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    _query = @"";
+    _kind = ABMCApplicationKindAll;
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 116)];
+    UISearchBar *search = [[UISearchBar alloc] initWithFrame:CGRectMake(8, 4, header.bounds.size.width - 16, 56)];
+    search.placeholder = @"搜索应用";
+    search.delegate = self;
+    [header addSubview:search];
+    UISegmentedControl *segments = [[UISegmentedControl alloc] initWithItems:@[@"所有应用", @"用户应用", @"巨魔应用", @"系统应用"]];
+    segments.frame = CGRectMake(10, 68, header.bounds.size.width - 20, 36);
+    segments.selectedSegmentIndex = 0;
+    [segments addTarget:self action:@selector(changeKind:) forControlEvents:UIControlEventValueChanged];
+    [header addSubview:segments];
+    self.tableView.tableHeaderView = header;
+    [self reloadApplications];
+}
+
+- (void)reloadApplications {
+    NSMutableArray *items = [NSMutableArray array];
+    for (id app in ABMCInstalledApplications()) {
+        NSString *identifier = ABMCBundleIdentifierForApplication(app);
+        NSString *name = ABMCDisplayNameForApplication(app);
+        if (identifier.length && name.length) [items addObject:@{ @"id": identifier, @"name": name, @"kind": @(ABMCApplicationKindForProxy(app)) }];
+    }
+    _applications = [items sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];
+    }];
+    [self.tableView reloadData];
+}
+
+- (void)changeKind:(UISegmentedControl *)sender { _kind = sender.selectedSegmentIndex; [self.tableView reloadData]; }
+- (NSArray<NSDictionary *> *)visibleApplications {
+    NSPredicate *filter = [NSPredicate predicateWithBlock:^BOOL(NSDictionary *item, NSDictionary *bindings) {
+        if (self->_kind != ABMCApplicationKindAll && [item[@"kind"] integerValue] != self->_kind) return NO;
+        return !self->_query.length || [item[@"name"] localizedCaseInsensitiveContainsString:self->_query] || [item[@"id"] localizedCaseInsensitiveContainsString:self->_query];
+    }];
+    return [_applications filteredArrayUsingPredicate:filter] ?: @[];
+}
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.visibleApplications.count; }
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ApplicationCell"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ApplicationCell"];
+    NSDictionary *item = self.visibleApplications[indexPath.row];
+    NSString *identifier = item[@"id"];
+    // Render synchronously from the bounded cache: no delayed icon replacement,
+    // so selection/scrolling never changes the row's layout or icon position.
+    ABMCApplyLargeIcon(cell, ABMCIconImageForBundleID(identifier) ?: ABMCTintedIcon(@"app.badge.checkmark", UIColor.systemBlueColor));
+    cell.textLabel.font = [UIFont systemFontOfSize:18.0];
+    cell.detailTextLabel.font = [UIFont systemFontOfSize:14.0];
+    cell.textLabel.text = item[@"name"];
+    cell.detailTextLabel.text = identifier;
+    CFStringRef current = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, Domain);
+    cell.accessoryType = current && [(__bridge NSString *)current isEqualToString:[@"app:" stringByAppendingString:identifier]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    if (current) CFRelease(current);
+    return cell;
+}
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *action = [@"app:" stringByAppendingString:self.visibleApplications[indexPath.row][@"id"]];
+    CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, Domain);
+    CFPreferencesAppSynchronize(Domain);
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), Changed, NULL, NULL, YES);
+    [self.navigationController popViewControllerAnimated:YES];
+}
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text { _query = [text copy] ?: @""; [self.tableView reloadData]; }
 @end

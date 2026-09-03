@@ -11,7 +11,9 @@
 - (void)openFullscreenURL:(NSURL *)url;
 - (void)openSavedLink:(NSString *)linkID;
 - (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen;
+- (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
+- (void)runShortcut:(NSString *)name fullscreen:(BOOL)fullscreen;
 - (void)runAppShortcutBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)showControlCenter;
 - (void)showNotificationCenter;
@@ -57,20 +59,12 @@ BOOL ABMCPerformingDefaultAction = NO;
         _doubleAction = dbl ? (__bridge_transfer NSString *)dbl : @"none";
         _longPressAction = longPress ? (__bridge_transfer NSString *)longPress : @"default";
 
-        // Keep URL routing mode out of the click path. Missing/invalid values
-        // default to the currently working direct full-screen behavior.
-        CFPropertyListRef mode = CFPreferencesCopyAppValue(CFSTR("urlOpenMode"), PREFS_DOMAIN);
-        _useDirectFullscreenURLs = YES;
-        if (mode && CFGetTypeID(mode) == CFBooleanGetTypeID()) {
-            _useDirectFullscreenURLs = CFBooleanGetValue((CFBooleanRef)mode);
-        }
-        if (mode) CFRelease(mode);
-        NSArray *modeKeys = @[@"appOpenMode", @"appShortcutOpenMode", @"shortcutOpenMode"];
-        BOOL *modeTargets[] = { &_useFullscreenApps, &_useFullscreenAppShortcuts, &_useFullscreenShortcuts };
+        NSArray *modeKeys = @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode", @"shortcutOpenMode"];
+        BOOL *modeTargets[] = { &_useDirectFullscreenURLs, &_useFullscreenApps, &_useFullscreenAppShortcuts, &_useFullscreenShortcuts };
         for (NSUInteger index = 0; index < modeKeys.count; index++) {
-            CFPropertyListRef value = CFPreferencesCopyAppValue((__bridge CFStringRef)modeKeys[index], PREFS_DOMAIN);
-            *modeTargets[index] = (value && CFGetTypeID(value) == CFBooleanGetTypeID()) ? CFBooleanGetValue((CFBooleanRef)value) : YES;
-            if (value) CFRelease(value);
+            CFPropertyListRef mode = CFPreferencesCopyAppValue((__bridge CFStringRef)modeKeys[index], PREFS_DOMAIN);
+            *modeTargets[index] = (mode && CFGetTypeID(mode) == CFBooleanGetTypeID()) ? CFBooleanGetValue((CFBooleanRef)mode) : YES;
+            if (mode) CFRelease(mode);
         }
     }
 }
@@ -147,7 +141,8 @@ BOOL ABMCPerformingDefaultAction = NO;
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
         [self runShortcutIdentifier:parts.firstObject name:(parts.count > 1 ? parts[1] : @"")];
     } else if ([actionID hasPrefix:@"shortcut:"]) {
-        [self runShortcut:[actionID substringFromIndex:9]];
+        BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenShortcuts; }
+        [self runShortcut:[actionID substringFromIndex:9] fullscreen:fullscreen];
     }
 }
 
@@ -459,94 +454,102 @@ BOOL ABMCPerformingDefaultAction = NO;
     });
 }
 
+- (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
+    SEL typeSelector = NSSelectorFromString(@"type");
+    id (^find)(NSArray *) = ^id(NSArray *items) {
+        for (id item in items) {
+            NSString *itemType = [item respondsToSelector:typeSelector] ? ((id (*)(id, SEL))objc_msgSend)(item, typeSelector) : nil;
+            if ([itemType isEqualToString:type]) return item;
+        }
+        return nil;
+    };
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL proxyForID = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    id proxy = [proxyClass respondsToSelector:proxyForID] ? ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxyForID, bundleIdentifier) : nil;
+    SEL itemsSelector = NSSelectorFromString(@"staticShortcutItems");
+    id target = find([proxy respondsToSelector:itemsSelector] ? ((id (*)(id, SEL))objc_msgSend)(proxy, itemsSelector) : @[]);
+    if (target) return target;
+
+    // Query SpringBoard's own service for dynamic and managed shortcut items.
+    dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_LAZY | RTLD_LOCAL);
+    Class clientClass = NSClassFromString(@"SBSApplicationClient");
+    SEL checkout = NSSelectorFromString(@"checkOutClientWithClass:");
+    SEL serviceItems = NSSelectorFromString(@"applicationShortcutItemsOfTypes:forBundleIdentifier:");
+    SEL checkin = NSSelectorFromString(@"checkInClient:");
+    id client = nil;
+    @try {
+        if ([clientClass respondsToSelector:checkout]) client = ((id (*)(id, SEL, id))objc_msgSend)(clientClass, checkout, clientClass);
+        if ([client respondsToSelector:serviceItems]) target = find(((id (*)(id, SEL, unsigned long long, id))objc_msgSend)(client, serviceItems, ~0ULL, bundleIdentifier));
+    } @catch (NSException *exception) {}
+    @finally { if (client && [clientClass respondsToSelector:checkin]) ((void (*)(id, SEL, id))objc_msgSend)(clientClass, checkin, client); }
+    if (target) return target;
+
+    // Final static fallback: rebuild the Apple shortcut object from Info.plist.
+    NSURL *URL = [proxy respondsToSelector:NSSelectorFromString(@"bundleURL")] ? ((id (*)(id, SEL))objc_msgSend)(proxy, NSSelectorFromString(@"bundleURL")) : nil;
+    NSArray *entries = [NSBundle bundleWithURL:URL].infoDictionary[@"UIApplicationShortcutItems"];
+    Class itemClass = NSClassFromString(@"SBSApplicationShortcutItem");
+    SEL create = NSSelectorFromString(@"_staticApplicationShortcutItemsFromInfoPlistEntry:");
+    for (NSDictionary *entry in [entries isKindOfClass:[NSArray class]] ? entries : @[]) {
+        if (![entry[@"UIApplicationShortcutItemType"] isEqualToString:type]) continue;
+        target = find([itemClass respondsToSelector:create] ? ((id (*)(id, SEL, id))objc_msgSend)(itemClass, create, entry) : @[]);
+        if (target) return target;
+    }
+    return nil;
+}
+
 - (void)runAppShortcutBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
     if (!bundleIdentifier.length || !type.length) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenAppShortcuts; }
-        BOOL activated = NO;
         @try {
-            Class proxyClass = NSClassFromString(@"LSApplicationProxy");
-            SEL proxyForID = NSSelectorFromString(@"applicationProxyForIdentifier:");
-            id proxy = [proxyClass respondsToSelector:proxyForID] ? ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxyForID, bundleIdentifier) : nil;
-            SEL itemsSelector = NSSelectorFromString(@"staticShortcutItems");
-            NSArray *items = [proxy respondsToSelector:itemsSelector] ? ((id (*)(id, SEL))objc_msgSend)(proxy, itemsSelector) : nil;
-            id target = nil;
-            for (id item in items) {
-                SEL typeSelector = NSSelectorFromString(@"type");
-                NSString *itemType = [item respondsToSelector:typeSelector] ? ((id (*)(id, SEL))objc_msgSend)(item, typeSelector) : nil;
-                if ([itemType isEqualToString:type]) { target = item; break; }
-            }
-            // This is the only system API that executes an App Shortcut item.
-            // It is used in either display mode so the selected operation is
-            // never silently replaced by merely opening the application.
+            id target = [self appShortcutItemForBundleIdentifier:bundleIdentifier type:type];
             Class iconView = NSClassFromString(@"SBIconView");
             SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
-            if (target && [iconView respondsToSelector:activate]) {
-                ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconView, activate, target, bundleIdentifier, nil);
-                activated = YES;
-            }
+            if (target && [iconView respondsToSelector:activate]) ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconView, activate, target, bundleIdentifier, nil);
         } @catch (NSException *exception) {}
-        // Compatibility path is only a failure fallback. It allows a user's
-        // split-screen launcher to intercept without dropping the action.
-        if (!activated && !fullscreen) [self openApp:bundleIdentifier fullscreen:NO];
     });
 }
 
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name {
     if (!identifier.length && !name.length) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        __block id coordinator = nil;
         BOOL submitted = NO;
         @try {
-            dlopen("/System/Library/PrivateFrameworks/WorkflowKit.framework/WorkflowKit", RTLD_LAZY | RTLD_LOCAL);
-            dlopen("/System/Library/PrivateFrameworks/WorkflowUI.framework/WorkflowUI", RTLD_LAZY | RTLD_LOCAL);
-            Class databaseClass = NSClassFromString(@"WFDatabase");
-            id database = [databaseClass respondsToSelector:NSSelectorFromString(@"defaultDatabase")] ? ((id (*)(id, SEL))objc_msgSend)(databaseClass, NSSelectorFromString(@"defaultDatabase")) : nil;
-            SEL referenceSelector = NSSelectorFromString(@"referenceForWorkflowID:");
-            id reference = [database respondsToSelector:referenceSelector] ? ((id (*)(id, SEL, id))objc_msgSend)(database, referenceSelector, identifier) : nil;
-            Class coordinatorClass = NSClassFromString(@"WFLibraryRunCoordinator");
-            SEL initializer = NSSelectorFromString(@"initWithSource:database:");
-            SEL run = NSSelectorFromString(@"runWorkflowReference:fromSource:withInput:requestOutput:runViewSource:completionHandler:");
-            if (reference && [coordinatorClass instancesRespondToSelector:initializer]) {
-                coordinator = ((id (*)(id, SEL, id, id))objc_msgSend)([coordinatorClass alloc], initializer, @"RealActionButton", database);
-                if ([coordinator respondsToSelector:run]) {
-                    id retainedCoordinator = coordinator;
-                    ((void (*)(id, SEL, id, id, id, BOOL, id, id))objc_msgSend)(coordinator, run, reference, @"RealActionButton", nil, NO, nil, ^(id output, NSError *error) { (void)retainedCoordinator; });
+            // Apple ships this runner specifically for SpringBoard. It runs the
+            // saved workflow by identifier without presenting Shortcuts first.
+            dlopen("/System/Library/PrivateFrameworks/VoiceShortcutClient.framework/VoiceShortcutClient", RTLD_LAZY | RTLD_LOCAL);
+            Class runnerClass = NSClassFromString(@"WFSpringBoardWorkflowRunnerClient");
+            SEL initializer = NSSelectorFromString(@"initWithWorkflowIdentifier:");
+            SEL start = NSSelectorFromString(@"start");
+            if ([runnerClass instancesRespondToSelector:initializer]) {
+                id runner = ((id (*)(id, SEL, id))objc_msgSend)([runnerClass alloc], initializer, identifier);
+                if (runner && [runner respondsToSelector:start]) {
+                    ((void (*)(id, SEL))objc_msgSend)(runner, start);
                     submitted = YES;
                 }
             }
-            // Correct iOS 17 fallback: this is a class method of SBIconView.
-            if (!submitted) {
-            BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenShortcuts; }
-            Class workflowClass = NSClassFromString(@"WFWorkflow");
-            SEL init = NSSelectorFromString(@"initWithWorkflowIdentifier:");
-            id workflow = [workflowClass instancesRespondToSelector:init] ? ((id (*)(id, SEL, id))objc_msgSend)([workflowClass alloc], init, identifier) : nil;
-            Class iconView = NSClassFromString(@"SBIconView");
-            SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
-            if (workflow && [iconView respondsToSelector:activate]) {
-                ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconView, activate, workflow, @"is.workflow.my.app", nil);
-                submitted = YES;
-            } else if (!fullscreen) {
-                // Compatibility route only when direct execution is unavailable.
-                [self runShortcut:name];
-                submitted = YES;
-            }
-        }
         } @catch (NSException *exception) {}
-        if (!submitted) [self runShortcut:name];
+        // URL is intentionally only the final compatibility fallback when the
+        // SpringBoard-specific system runner is unavailable on an OS build.
+        if (!submitted) {
+            BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenShortcuts; }
+            [self runShortcut:name fullscreen:fullscreen];
+        }
     });
 }
 
-- (void)runShortcut:(NSString *)name {
+- (void)runShortcut:(NSString *)name fullscreen:(BOOL)fullscreen {
     if (!name.length) return;
-    NSString *encoded = [name stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+    NSString *encoded = [name stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];
     NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"shortcuts://run-shortcut?name=%@", encoded]];
     if (!url) return;
+    if (fullscreen) {
+        [self openFullscreenURL:url];
+        return;
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            id app = [UIApplication sharedApplication];
             SEL open = NSSelectorFromString(@"openURL:options:completionHandler:");
-            if ([app respondsToSelector:open]) ((void (*)(id, SEL, id, id, id))objc_msgSend)(app, open, url, @{}, nil);
+            if ([UIApplication.sharedApplication respondsToSelector:open]) ((void (*)(id, SEL, id, id, id))objc_msgSend)(UIApplication.sharedApplication, open, url, @{}, nil);
         } @catch (NSException *exception) {}
     });
 }

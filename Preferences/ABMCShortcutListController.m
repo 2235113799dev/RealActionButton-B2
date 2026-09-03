@@ -130,7 +130,6 @@ static BOOL ABMCContainsChinese(NSString *value) {
     }
     NSDictionary *item = items[path.row];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    cell.imageView.image = ABMCTintedIcon(@"square.stack.3d.up.fill", UIColor.systemBlueColor);
     UIImage *icon = ABMCShortcutIconForIdentifier(item[@"identifier"]);
     ABMCApplyLargeIcon(cell, icon ?: ABMCTintedIcon(@"square.stack.3d.up.fill", UIColor.systemBlueColor));
     cell.textLabel.font = [UIFont systemFontOfSize:18];

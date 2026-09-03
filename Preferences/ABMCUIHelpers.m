@@ -1,103 +1,22 @@
 #import "ABMCUIHelpers.h"
 #import <objc/message.h>
-#import <dlfcn.h>
 
-@interface UIImage (ABMCAltListPrivate)
-+ (instancetype)_applicationIconImageForBundleIdentifier:(NSString *)bundleIdentifier format:(int)format scale:(CGFloat)scale;
+@interface UIImage (ABMCIconPrivate)
++ (instancetype)_applicationIconImageForBundleIdentifier:(NSString *)identifier format:(int)format scale:(CGFloat)scale;
 @end
 
-static id ABMCInvoke(id object, NSString *name) {
-    SEL selector = NSSelectorFromString(name);
-    return object && [object respondsToSelector:selector] ? ((id (*)(id, SEL))objc_msgSend)(object, selector) : nil;
-}
+static id ABMCObject(id object, NSString *name) { SEL selector=NSSelectorFromString(name);return object&&[object respondsToSelector:selector]?((id(*)(id,SEL))objc_msgSend)(object,selector):nil; }
+static BOOL ABMCBool(id object, NSString *name) { SEL selector=NSSelectorFromString(name);return object&&[object respondsToSelector:selector]?((BOOL(*)(id,SEL))objc_msgSend)(object,selector):NO; }
+NSString *ABMCBundleIdentifierForApplication(id app) { id value=ABMCObject(app,@"bundleIdentifier");return[value isKindOfClass:NSString.class]?value:nil; }
+NSString *ABMCDisplayNameForApplication(id app) { NSString *name=ABMCObject(app,@"localizedName");if(name.length)return name;NSURL *url=ABMCObject(app,@"bundleURL");NSDictionary *info=[NSBundle bundleWithURL:url].infoDictionary;return info[@"CFBundleDisplayName"]?:info[@"CFBundleName"]?:info[@"CFBundleExecutable"]; }
 
-static void ABMCLoadAltList(void) {
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        // RootHide maps /Library to its private root at runtime. This is only
-        // loaded by Preferences and never copied into, or injected by, B2.
-        dlopen("/var/jb/Library/Frameworks/AltList.framework/AltList", RTLD_LAZY | RTLD_LOCAL);
-        dlopen("/Library/Frameworks/AltList.framework/AltList", RTLD_LAZY | RTLD_LOCAL);
-    });
-}
-
-NSString *ABMCBundleIdentifierForApplication(id application) {
-    ABMCLoadAltList();
-    NSString *identifier = ABMCInvoke(application, @"atl_bundleIdentifier");
-    if (!identifier.length) identifier = ABMCInvoke(application, @"bundleIdentifier");
-    return identifier;
-}
-
-NSString *ABMCDisplayNameForApplication(id application) {
-    ABMCLoadAltList();
-    NSString *name = ABMCInvoke(application, @"atl_fastDisplayName");
-    if (!name.length) name = ABMCInvoke(application, @"localizedName");
-    return name;
-}
-
-NSArray *ABMCAltListUserApplications(void) {
-    ABMCLoadAltList();
-    Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-    id workspace = ABMCInvoke(workspaceClass, @"defaultWorkspace");
-    NSArray *all = ABMCInvoke(workspace, @"atl_allInstalledApplications");
-    if (![all isKindOfClass:[NSArray class]]) return @[];
-    NSMutableArray *result = [NSMutableArray array];
-    NSMutableSet *identifiers = [NSMutableSet set];
-    for (id application in all) {
-        BOOL isUser = NO;
-        @try {
-            SEL selector = NSSelectorFromString(@"atl_isUserApplication");
-            isUser = [application respondsToSelector:selector] ? ((BOOL (*)(id, SEL))objc_msgSend)(application, selector) : NO;
-        } @catch (NSException *exception) { continue; }
-        NSString *identifier = ABMCBundleIdentifierForApplication(application);
-        if (isUser && identifier.length && ![identifiers containsObject:identifier]) {
-            [identifiers addObject:identifier];
-            [result addObject:application];
-        }
-    }
-    return result;
-}
-
-static UIImage *ABMCScaleIcon(UIImage *image) {
-    if (!image) return nil;
-    CGFloat side = 30.0;
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(side, side), NO, UIScreen.mainScreen.scale);
-    [image drawInRect:CGRectMake(0, 0, side, side)];
-    UIImage *result = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    return result;
-}
-
-UIImage *ABMCIconImageForBundleID(NSString *bundleID) {
-    if (!bundleID.length) return nil;
-    @try {
-        UIImage *image = [UIImage _applicationIconImageForBundleIdentifier:bundleID format:0 scale:UIScreen.mainScreen.scale];
-        if (image) return ABMCScaleIcon(image);
-    } @catch (NSException *exception) {}
-    return nil;
-}
-
-UIImage *ABMCIconImageForProxy(id application) { return ABMCIconImageForBundleID(ABMCBundleIdentifierForApplication(application)); }
-UIImage *ABMCIconImage(NSString *token) {
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightMedium];
-    UIImage *symbol = token.length ? [UIImage systemImageNamed:token withConfiguration:config] : nil;
-    return symbol ?: ABMCIconImageForBundleID(token) ?: [UIImage systemImageNamed:@"app.fill" withConfiguration:config];
-}
-UIImage *ABMCTintedIcon(NSString *token, UIColor *color) {
-    UIImage *image = ABMCIconImage(token);
-    return [UIImage systemImageNamed:token] ? [image imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal] : image;
-}
-NSString *ABMCInferLinkIcon(NSString *URLString) {
-    NSString *scheme = [NSURL URLWithString:URLString].scheme.lowercaseString;
-    if ([scheme isEqualToString:@"weixin"]) return @"com.tencent.xin";
-    if ([scheme isEqualToString:@"alipay"]) return @"com.alipay.iphoneclient";
-    if ([scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"]) return @"safari.fill";
-    if ([scheme isEqualToString:@"mailto"]) return @"envelope.fill";
-    if ([scheme isEqualToString:@"tel"] || [scheme isEqualToString:@"sms"]) return @"phone.fill";
-    return @"link";
-}
-NSString *ABMCApplicationName(NSString *bundleID) {
-    if (!bundleID.length) return @"未知应用";
-    for (id app in ABMCAltListUserApplications()) if ([ABMCBundleIdentifierForApplication(app) isEqualToString:bundleID]) return ABMCDisplayNameForApplication(app) ?: bundleID;
-    return bundleID;
-}
+static BOOL IsUsable(id app) { NSString*bid=ABMCBundleIdentifierForApplication(app);NSURL*url=ABMCObject(app,@"bundleURL");NSString*path=url.path;NSString*type=ABMCObject(app,@"applicationType");if(!bid.length||!path.length||![path.pathExtension.lowercaseString isEqualToString:@"app"])return NO;if(![type isEqualToString:@"User"]&&![type isEqualToString:@"System"])return NO;if(ABMCBool(app,@"launchProhibited")||ABMCBool(app,@"isLaunchProhibited"))return NO;for(NSString*part in @[@"/PlugIns/",@"/Extensions/",@".appex",@"UIService",@"Service",@"Helper",@"Widget"])if([path containsString:part])return NO;return YES; }
+ABMCApplicationKind ABMCApplicationKindForProxy(id app) { NSURL*url=ABMCObject(app,@"bundleURL");NSString*path=url.path;NSString*type=ABMCObject(app,@"applicationType");NSString*container=[path stringByDeletingLastPathComponent];if([[NSFileManager defaultManager]fileExistsAtPath:[container stringByAppendingPathComponent:@"_TrollStore"]]||[[NSFileManager defaultManager]fileExistsAtPath:[container stringByAppendingPathComponent:@"_TrollStoreLite"]]||[path rangeOfString:@"TrollStore" options:NSCaseInsensitiveSearch].location!=NSNotFound)return ABMCApplicationKindTrollStore;return[type isEqualToString:@"System"]?ABMCApplicationKindSystem:ABMCApplicationKindUser; }
+NSArray *ABMCInstalledApplications(void) { Class c=NSClassFromString(@"LSApplicationWorkspace");SEL d=NSSelectorFromString(@"defaultWorkspace"),e=NSSelectorFromString(@"enumerateApplicationsOfType:block:");id w=c&&[c respondsToSelector:d]?((id(*)(id,SEL))objc_msgSend)(c,d):nil;if(!w)return @[];NSMutableArray*raw=[NSMutableArray array];if([w respondsToSelector:e]){void(^block)(id)=^(id app){if(app)[raw addObject:app];};((void(*)(id,SEL,NSInteger,id))objc_msgSend)(w,e,0,block);((void(*)(id,SEL,NSInteger,id))objc_msgSend)(w,e,1,block);}else{NSArray*a=ABMCObject(w,@"allInstalledApplications");if([a isKindOfClass:NSArray.class])[raw addObjectsFromArray:a];}NSMutableArray*out=[NSMutableArray array];NSMutableSet*seen=[NSMutableSet set];for(id app in raw){NSString*bid=ABMCBundleIdentifierForApplication(app);if(IsUsable(app)&&bid.length&&![seen containsObject:bid]){[seen addObject:bid];[out addObject:app];}}return out; }
+static UIImage *Scale(UIImage *image) {if(!image)return nil;CGFloat d=29;UIGraphicsBeginImageContextWithOptions(CGSizeMake(d,d),NO,UIScreen.mainScreen.scale);[image drawInRect:CGRectMake(0,0,d,d)];UIImage*r=UIGraphicsGetImageFromCurrentImageContext();UIGraphicsEndImageContext();return r;}
+UIImage *ABMCIconImageForBundleID(NSString *bid) {if(!bid.length)return nil;@try{return Scale([UIImage _applicationIconImageForBundleIdentifier:bid format:0 scale:UIScreen.mainScreen.scale]);}@catch(NSException*e){return nil;}}
+UIImage *ABMCIconImageForProxy(id app){return ABMCIconImageForBundleID(ABMCBundleIdentifierForApplication(app));}
+UIImage *ABMCIconImage(NSString *token){UIImageSymbolConfiguration*c=[UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightMedium];UIImage*s=[UIImage systemImageNamed:token withConfiguration:c];return s?:ABMCIconImageForBundleID(token)?:[UIImage systemImageNamed:@"app.fill" withConfiguration:c];}
+UIImage *ABMCTintedIcon(NSString *token,UIColor *color){UIImage*i=ABMCIconImage(token);return[UIImage systemImageNamed:token]?[i imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal]:i;}
+NSString *ABMCInferLinkIcon(NSString *url){NSString*s=[NSURL URLWithString:url].scheme.lowercaseString;if([s isEqualToString:@"weixin"])return @"com.tencent.xin";if([s isEqualToString:@"alipay"])return @"com.alipay.iphoneclient";if([s isEqualToString:@"http"]||[s isEqualToString:@"https"])return @"safari.fill";if([s isEqualToString:@"mailto"])return @"envelope.fill";if([s isEqualToString:@"tel"]||[s isEqualToString:@"sms"])return @"phone.fill";return @"link";}
+NSString *ABMCApplicationName(NSString *bid){for(id app in ABMCInstalledApplications())if([ABMCBundleIdentifierForApplication(app)isEqualToString:bid])return ABMCDisplayNameForApplication(app)?:bid;return bid?:@"未知应用";}

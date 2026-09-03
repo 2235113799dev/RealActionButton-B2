@@ -88,8 +88,8 @@ static NSString *ABMCLinkTitle(NSString *linkID) {
         [items addObject:test];
 
         NSArray *categories = @[
-            @[@"内置动作", @"选择内置", @"builtin", @"sparkles"], @[@"应用列表", @"选择应用", @"app", @"app.fill"],
-            @[@"指令列表", @"选择指令", @"shortcut", @"square.stack.3d.up.fill"], @[@"链接管理", @"管理链接", @"link", @"link"]
+            @[@"内置动作", @"内置动作", @"builtin", @"sparkles"], @[@"应用列表", @"应用列表", @"app", @"app.fill"],
+            @[@"指令列表", @"指令列表", @"shortcut", @"square.stack.3d.up.fill"], @[@"链接管理", @"链接管理", @"link", @"link"]
         ];
         for (NSArray *category in categories) {
             [items addObject:[PSSpecifier groupSpecifierWithName:category[0]]];

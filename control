@@ -6,4 +6,4 @@ Description: Multi-click actions for the Action Button (single and double click)
 Maintainer: Little 34306
 Author: 34306
 Section: Tweaks
-Depends: firmware (>= 17.0), preferenceloader, com.opa334.altlist (>= 1.0.11)
+Depends: firmware (>= 17.0), preferenceloader

@@ -9,6 +9,14 @@ static BOOL ABMCValidShortcutID(NSString *value) {
     return [value isKindOfClass:[NSString class]] && [[NSUUID alloc] initWithUUIDString:value] != nil;
 }
 
+static BOOL ABMCContainsChinese(NSString *value) {
+    for (NSUInteger index = 0; index < value.length; index++) {
+        unichar c = [value characterAtIndex:index];
+        if (c >= 0x4E00 && c <= 0x9FFF) return YES;
+    }
+    return NO;
+}
+
 @interface ABMCShortcutListController () <UISearchBarDelegate>
 @end
 
@@ -84,7 +92,7 @@ static BOOL ABMCValidShortcutID(NSString *value) {
             if (!rawName || !rawID) continue;
             NSString *name = [[NSString stringWithUTF8String:rawName] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
             NSString *identifier = [[NSString stringWithUTF8String:rawID] uppercaseString];
-            if (name.length && ABMCValidShortcutID(identifier)) results[identifier] = @{ @"name": name, @"identifier": identifier };
+            if (name.length && ABMCContainsChinese(name) && ABMCValidShortcutID(identifier)) results[identifier] = @{ @"name": name, @"identifier": identifier };
         }
     }
     if (statement) sqlite3_finalize(statement);

@@ -455,21 +455,26 @@ BOOL ABMCPerformingDefaultAction = NO;
     dispatch_async(dispatch_get_main_queue(), ^{
         BOOL handled = NO;
         @try {
+            // SpringBoard's native shortcut activation executes the selected
+            // workflow directly; it does not require opening the Shortcuts UI.
             dlopen("/System/Library/PrivateFrameworks/WorkflowKit.framework/WorkflowKit", RTLD_LAZY | RTLD_LOCAL);
             Class iconControllerClass = NSClassFromString(@"SBIconController");
             SEL shared = NSSelectorFromString(@"sharedInstance");
             id iconController = (iconControllerClass && [iconControllerClass respondsToSelector:shared]) ? ((id (*)(id, SEL))objc_msgSend)(iconControllerClass, shared) : nil;
-            SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
             Class workflowClass = NSClassFromString(@"WFWorkflow");
-            SEL initSel = NSSelectorFromString(@"initWithWorkflowIdentifier:");
-            if (iconController && [iconController respondsToSelector:activate] && workflowClass && [workflowClass instancesRespondToSelector:initSel]) {
-                id workflow = ((id (*)(id, SEL, id))objc_msgSend)([workflowClass alloc], initSel, identifier);
-                if (workflow) {
-                    ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconController, activate, workflow, @"is.workflow.my.app", nil);
-                    handled = YES;
-                }
+            SEL init = NSSelectorFromString(@"initWithWorkflowIdentifier:");
+            id workflow = workflowClass && [workflowClass instancesRespondToSelector:init] ? ((id (*)(id, SEL, id))objc_msgSend)([workflowClass alloc], init, identifier) : nil;
+            for (NSString *method in @[@"activateShortcut:withBundleIdentifier:forIconView:", @"activateShortcut:forIconView:"]) {
+                SEL selector = NSSelectorFromString(method);
+                if (!workflow || ![iconController respondsToSelector:selector]) continue;
+                if ([method isEqualToString:@"activateShortcut:withBundleIdentifier:forIconView:"]) ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconController, selector, workflow, @"is.workflow.my.app", nil);
+                else ((void (*)(id, SEL, id, id))objc_msgSend)(iconController, selector, workflow, nil);
+                handled = YES;
+                break;
             }
         } @catch (NSException *exception) {}
+        // Name URL is intentionally only the last safe fallback on systems
+        // where the native SpringBoard shortcut selector is unavailable.
         if (!handled) [self runShortcut:name];
     });
 }

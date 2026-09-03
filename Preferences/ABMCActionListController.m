@@ -53,8 +53,10 @@ static UIImage *IconForAction(NSString *action) {
     const ActionInfo *info = InfoForAction(action);
     NSString *fallback = info ? info->icon : ([action hasPrefix:@"app:"] ? [action substringFromIndex:4] : ([action hasPrefix:@"appshortcut:"] ? [[action substringFromIndex:12] componentsSeparatedByString:@"|"].firstObject : ([action hasPrefix:@"shortcutid:"] || [action hasPrefix:@"shortcut:"] ? @"square.stack.3d.up.fill" : ([action hasPrefix:@"link:"] || [action hasPrefix:@"url:"] ? @"link" : @"hand.tap.fill"))));
     NSString *token = ABMCDisplayIconToken(PresentationKeyForAction(action), fallback);
-    UIImage *image = ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(token, UIColor.systemBlueColor);
-    return image ?: ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor);
+    // Symbols must be resolved before application identifiers. The inverse
+    // order returned UIKit's generic app blueprint for names like hand.tap.fill.
+    UIImage *image = ABMCTintedIcon(token, nil) ?: ABMCIconImageForBundleID(token);
+    return image ?: ABMCTintedIcon(@"hand.tap.fill", nil);
 }
 
 @interface ABMCActionListController ()
@@ -80,7 +82,7 @@ static UIImage *IconForAction(NSString *action) {
     UITableViewCell *cell=[super tableView:tableView cellForRowAtIndexPath:indexPath]; PSSpecifier *s=[self specifierAtIndexPath:indexPath];
     cell.accessoryView=nil; cell.imageView.hidden=NO; cell.imageView.image=nil; cell.textLabel.textColor=UIColor.labelColor; cell.textLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];
     if ([s propertyForKey:@"selectedAction"]) ABMCApplyLargeIcon(cell, IconForAction(_current));
-    else { NSString *key=[s propertyForKey:@"presentationKey"],*fallback=[s propertyForKey:@"defaultIcon"]; if (fallback.length) { NSString *token=ABMCDisplayIconToken(key,fallback); ABMCApplyLargeIcon(cell, ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(token, UIColor.systemBlueColor)); } }
+    else { NSString *key=[s propertyForKey:@"presentationKey"],*fallback=[s propertyForKey:@"defaultIcon"]; if (fallback.length) { NSString *token=ABMCDisplayIconToken(key,fallback); ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(@"square.grid.2x2.fill",nil)); } }
     return cell;
 }
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {

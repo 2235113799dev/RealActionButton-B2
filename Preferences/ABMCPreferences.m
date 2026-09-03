@@ -66,7 +66,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [single setProperty:@"default" forKey:@"default"];
         [single setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [single setProperty:@"hand.tap.fill" forKey:@"iconToken"];
-        [single setProperty:ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor) forKey:@"iconImage"];
+        [single setProperty:ABMCTintedIcon(@"hand.tap.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"];
         [specs addObject:single];
 
         PSSpecifier *dbl = [PSSpecifier preferenceSpecifierNamed:@"双击动作"
@@ -80,7 +80,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [dbl setProperty:@"none" forKey:@"default"];
         [dbl setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [dbl setProperty:@"hand.tap.fill" forKey:@"iconToken"];
-        [dbl setProperty:ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor) forKey:@"iconImage"];
+        [dbl setProperty:ABMCTintedIcon(@"hand.tap.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"];
         [specs addObject:dbl];
 
         PSSpecifier *longPress = [PSSpecifier preferenceSpecifierNamed:@"长按动作"
@@ -94,7 +94,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [longPress setProperty:@"default" forKey:@"default"];
         [longPress setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [longPress setProperty:@"hand.tap.fill" forKey:@"iconToken"];
-        [longPress setProperty:ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor) forKey:@"iconImage"];
+        [longPress setProperty:ABMCTintedIcon(@"hand.tap.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"];
         [specs addObject:longPress];
 
         PSSpecifier *appearanceGroup = [PSSpecifier groupSpecifierWithName:@"全局外观"];
@@ -105,8 +105,11 @@ static NSString *titleForActionID(NSString *actionID) {
         [unifiedIcons setProperty:@"unifiedIconSizing" forKey:@"id"];
         [unifiedIcons setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [unifiedIcons setProperty:@YES forKey:@"default"];
-        [unifiedIcons setProperty:ABMCTintedIcon(@"arrow.up.left.and.arrow.down.right", UIColor.systemBlueColor) forKey:@"iconImage"];
+        [unifiedIcons setProperty:ABMCTintedIcon(@"arrow.up.left.and.arrow.down.right", ABMCUnifiedIconColor()) forKey:@"iconImage"];
         [specs addObject:unifiedIcons];
+        PSSpecifier *iconStyle = [PSSpecifier preferenceSpecifierNamed:@"图标尺寸与颜色" target:self set:NULL get:NULL detail:NSClassFromString(@"ABMCIconStyleController") cell:PSLinkCell edit:Nil];
+        [iconStyle setProperty:ABMCTintedIcon(@"paintpalette.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"];
+        [specs addObject:iconStyle];
 
         PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"启动方式"];
         [launchGroup setProperty:@"开启时优先由系统全屏执行；关闭时使用兼容启动路线，供 FV 等分屏插件接管。快捷指令始终优先后台直接运行，只有后台接口不可用才使用后备启动方式。" forKey:@"footerText"];
@@ -124,7 +127,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [urlMode setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [urlMode setProperty:@YES forKey:@"default"];
         [urlMode setProperty:@"link" forKey:@"iconToken"];
-        [urlMode setProperty:ABMCTintedIcon(@"link", UIColor.systemBlueColor) forKey:@"iconImage"];
+        [urlMode setProperty:ABMCTintedIcon(@"link", ABMCUnifiedIconColor()) forKey:@"iconImage"];
         [specs addObject:urlMode];
 
         NSArray *launchModes = @[
@@ -138,7 +141,7 @@ static NSString *titleForActionID(NSString *actionID) {
             [mode setProperty:PREFS_DOMAIN forKey:@"defaults"];
             [mode setProperty:@YES forKey:@"default"];
             [mode setProperty:item[2] forKey:@"iconToken"];
-            [mode setProperty:ABMCTintedIcon(item[2], UIColor.systemBlueColor) forKey:@"iconImage"];
+            [mode setProperty:ABMCTintedIcon(item[2], ABMCUnifiedIconColor()) forKey:@"iconImage"];
             [specs addObject:mode];
         }
 
@@ -167,7 +170,9 @@ static NSString *titleForActionID(NSString *actionID) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self reload];
+    // Rebuild fixed specifier icons after the pt/color editor changes.
+    _specifiers = nil;
+    [self reloadSpecifiers];
 }
 
 - (void)reloadSpecifiers {

@@ -1,4 +1,5 @@
 #import "ABMCUIHelpers.h"
+#import <math.h>
 #import <objc/message.h>
 #import <dlfcn.h>
 
@@ -75,22 +76,28 @@ NSArray *ABMCInstalledApplications(void) {
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCPresentationKey CFSTR("presentationOverrides")
 #define ABMCUnifiedSizeKey CFSTR("unifiedIconSizing")
+#define ABMCUnifiedPointSizeKey CFSTR("unifiedIconSize")
+#define ABMCUnifiedColorKey CFSTR("unifiedIconColor")
 
 BOOL ABMCUnifiedIconSizingEnabled(void) {
     CFPropertyListRef value = CFPreferencesCopyAppValue(ABMCUnifiedSizeKey, ABMCDomain);
     BOOL enabled = value && CFGetTypeID(value) == CFBooleanGetTypeID() ? CFBooleanGetValue((CFBooleanRef)value) : YES;
-    if (value) CFRelease(value);
-    return enabled;
+    if (value) CFRelease(value); return enabled;
 }
+CGFloat ABMCUnifiedIconSize(void) {
+    CFPropertyListRef value=CFPreferencesCopyAppValue(ABMCUnifiedPointSizeKey,ABMCDomain);
+    CGFloat size=value&&CFGetTypeID(value)==CFNumberGetTypeID()?[(__bridge NSNumber *)value doubleValue]:30.0;
+    if(value)CFRelease(value); return MIN(48.0,MAX(12.0,size));
+}
+static UIColor *ColorForHex(NSString *text) { NSString*s=[[text ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]uppercaseString];if([s hasPrefix:@"#"])s=[s substringFromIndex:1];unsigned n=0;NSScanner*scan=[NSScanner scannerWithString:s];if(s.length!=6||![scan scanHexInt:&n]||!scan.isAtEnd)return nil;return[UIColor colorWithRed:((n>>16)&255)/255.0 green:((n>>8)&255)/255.0 blue:(n&255)/255.0 alpha:1]; }
+UIColor *ABMCUnifiedIconColor(void) { CFPropertyListRef value=CFPreferencesCopyAppValue(ABMCUnifiedColorKey,ABMCDomain);UIColor*color=ColorForHex(value&&CFGetTypeID(value)==CFStringGetTypeID()?(__bridge NSString*)value:nil)?:UIColor.systemBlueColor;if(value)CFRelease(value);return color; }
+NSString *ABMCUnifiedIconColorHex(void) { UIColor*c=ABMCUnifiedIconColor();CGFloat r=0,g=0,b=0,a=0;if(![c getRed:&r green:&g blue:&b alpha:&a])return @"#007AFF";return[NSString stringWithFormat:@"#%02lX%02lX%02lX",lround(r*255),lround(g*255),lround(b*255)]; }
 static UIImage *NormalizedIcon(UIImage *image) {
-    if (!image) return nil;
-    const CGFloat canvas = 34.0, maximum = 30.0;
-    CGSize size = image.size;
-    CGFloat scale = (size.width > 0 && size.height > 0) ? MIN(maximum / size.width, maximum / size.height) : 1.0;
-    CGSize drawSize = CGSizeMake(MAX(1.0, size.width * scale), MAX(1.0, size.height * scale));
-    CGRect rect = CGRectMake((canvas - drawSize.width) * .5, (canvas - drawSize.height) * .5, drawSize.width, drawSize.height);
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(canvas, canvas), NO, UIScreen.mainScreen.scale);
-    [image drawInRect:rect]; UIImage *result = UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return result;
+    if (!image || ![image isKindOfClass:UIImage.class]) return nil;
+    CGFloat maximum=ABMCUnifiedIconSize(),canvas=maximum+4.0; CGSize size=image.size;
+    CGFloat scale=(size.width>0&&size.height>0)?MIN(maximum/size.width,maximum/size.height):1.0;
+    CGSize drawSize=CGSizeMake(MAX(1.0,size.width*scale),MAX(1.0,size.height*scale)); CGRect rect=CGRectMake((canvas-drawSize.width)*.5,(canvas-drawSize.height)*.5,drawSize.width,drawSize.height);
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(canvas,canvas),NO,UIScreen.mainScreen.scale);[image drawInRect:rect];UIImage*result=UIGraphicsGetImageFromCurrentImageContext();UIGraphicsEndImageContext();return result;
 }
 static NSDictionary *PresentationOverrides(void) {
     CFPropertyListRef value = CFPreferencesCopyAppValue(ABMCPresentationKey, ABMCDomain);
@@ -173,20 +180,31 @@ UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor) {
         SEL draw = NSSelectorFromString(@"imageWithIcon:size:background:");
         if (![iconClass instancesRespondToSelector:makeIcon] || ![drawerClass respondsToSelector:draw]) return nil;
         id icon = ((id (*)(id, SEL, long long, unsigned short, id))objc_msgSend)([iconClass alloc], makeIcon, backgroundColor, (unsigned short)glyph, nil);
-        UIImage *result = icon ? ((id (*)(id, SEL, id, CGSize, BOOL))objc_msgSend)(drawerClass, draw, icon, CGSizeMake(34, 34), YES) : nil;
-        if (result) [cache setObject:result forKey:key];
-        return result;
+        id rendered = icon ? ((id (*)(id, SEL, id, CGSize, BOOL))objc_msgSend)(drawerClass, draw, icon, CGSizeMake(34, 34), YES) : nil;
+        // iOS 17.3 returns WFImage here, not UIImage. Convert it before any
+        // UITableView sizing/rendering code touches it.
+        SEL uiImage = NSSelectorFromString(@"UIImage");
+        UIImage *result = [rendered isKindOfClass:UIImage.class] ? rendered : ([rendered respondsToSelector:uiImage] ? ((id (*)(id, SEL))objc_msgSend)(rendered, uiImage) : nil);
+        if ([result isKindOfClass:UIImage.class]) [cache setObject:result forKey:key];
+        return [result isKindOfClass:UIImage.class] ? result : nil;
     } @catch (NSException *exception) { return nil; }
 }
 
 UIImage *ABMCIconImage(NSString *token) {
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:24.0 weight:UIImageSymbolWeightMedium];
-    UIImage *symbol = token.length ? [UIImage systemImageNamed:token withConfiguration:config] : nil;
+    CGFloat pointSize=ABMCUnifiedIconSizingEnabled()?ABMCUnifiedIconSize():24.0;
+    UIImageSymbolConfiguration *config=[UIImageSymbolConfiguration configurationWithPointSize:pointSize weight:UIImageSymbolWeightMedium];
+    // Ask for a symbol once. Looking up a non-symbol as an application icon
+    // first created the generic blueprint placeholder shown in the report.
+    UIImage *symbol=token.length?[UIImage systemImageNamed:token withConfiguration:config]:nil;
     return symbol ?: ABMCIconImageForBundleID(token) ?: [UIImage systemImageNamed:@"app.fill" withConfiguration:config];
 }
 UIImage *ABMCTintedIcon(NSString *token, UIColor *color) {
-    UIImage *image = ABMCIconImage(token);
-    return [UIImage systemImageNamed:token] ? [image imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal] : image;
+    CGFloat pointSize=ABMCUnifiedIconSizingEnabled()?ABMCUnifiedIconSize():24.0;
+    UIImage *symbol=[UIImage systemImageNamed:token withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:pointSize weight:UIImageSymbolWeightMedium]];
+    // Existing feature rows pass systemBlue. Treat that as the configurable
+    // global accent while preserving explicit secondary/error colors.
+    UIColor *effective=(!color || [color isEqual:UIColor.systemBlueColor]) ? ABMCUnifiedIconColor() : color;
+    return symbol ? [symbol imageWithTintColor:effective renderingMode:UIImageRenderingModeAlwaysOriginal] : ABMCIconImageForBundleID(token);
 }
 void ABMCApplyLargeIcon(UITableViewCell *cell, UIImage *image) {
     // Never set imageView.frame or accessoryView here. Preferences owns those

@@ -113,6 +113,7 @@ static NSString *ABMCLinkTitle(NSString *linkID) {
         cell.tintColor = blue;
         cell.textLabel.textColor = blue;
         cell.detailTextLabel.textColor = blue;
+        cell.textLabel.attributedText = [[NSAttributedString alloc] initWithString:cell.textLabel.text ?: @"" attributes:@{NSForegroundColorAttributeName: blue, NSFontAttributeName: cell.textLabel.font}];
         cell.textLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
         UIImageView *light = [[UIImageView alloc] initWithImage:ABMCTintedIcon(@"lightbulb.max", blue)];
         light.frame = CGRectMake(0, 0, 30, 30);

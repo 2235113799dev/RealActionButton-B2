@@ -298,9 +298,20 @@ BOOL ABMCPerformingDefaultAction = NO;
             Class c = NSClassFromString(@"SBNotificationCenterController");
             SEL shared = NSSelectorFromString(@"sharedInstance");
             id controller = c && [c respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(c, shared) : nil;
-            for (NSString *name in @[@"presentAnimated:", @"_presentAnimated:"]) {
+            for (NSString *name in @[@"revealAnimated:", @"revealNotificationCenterAnimated:", @"presentAnimated:", @"_presentAnimated:"]) {
                 SEL selector = NSSelectorFromString(name);
                 if ([controller respondsToSelector:selector]) { ((void (*)(id, SEL, BOOL))objc_msgSend)(controller, selector, YES); return; }
+            }
+            // iOS 17 部分机型由主界面工作区而非旧控制器管理通知中心。
+            Class workspaceClass = NSClassFromString(@"SBMainWorkspace");
+            SEL sharedWorkspace = NSSelectorFromString(@"sharedInstance");
+            id workspace = workspaceClass && [workspaceClass respondsToSelector:sharedWorkspace] ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, sharedWorkspace) : nil;
+            for (NSString *name in @[@"showNotificationCenter", @"_showNotificationCenter", @"showNotificationCenterAnimated:"]) {
+                SEL selector = NSSelectorFromString(name);
+                if (![workspace respondsToSelector:selector]) continue;
+                if ([name hasSuffix:@":"]) ((void (*)(id, SEL, BOOL))objc_msgSend)(workspace, selector, YES);
+                else ((void (*)(id, SEL))objc_msgSend)(workspace, selector);
+                return;
             }
         } @catch (NSException *exception) {}
     });

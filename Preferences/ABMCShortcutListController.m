@@ -103,8 +103,11 @@ static id ABMCInvoke(id target, NSString *name) { SEL selector=NSSelectorFromStr
     sqlite3_stmt *tables=NULL;
     if(sqlite3_prepare_v2(db,"SELECT name FROM sqlite_master WHERE type='table'",-1,&tables,NULL)==SQLITE_OK) {
         while(sqlite3_step(tables)==SQLITE_ROW) {
-            const char *raw=(const char *)sqlite3_column_text(tables,0); if(!raw)continue; NSString *table=[NSString stringWithUTF8String:raw];
-            NSString *lower=table.lowercaseString; if([table hasPrefix:@"sqlite_"]||(![lower containsString:@"workflow"]&&! [lower containsString:@"shortcut"]))continue;
+            const char *raw=(const char *)sqlite3_column_text(tables,0); if(!raw)continue;
+            NSString *table=[NSString stringWithUTF8String:raw];
+            // 所有快捷指令页面对应的是 ZSHORTCUT：ZNAME 与 ZWORKFLOWID 一一对应。
+            // 禁止读取 ZWORKFLOW/关联实体，避免出现“欢乐豆 + UUID”的错配记录。
+            if(![table isEqualToString:@"ZSHORTCUT"]) continue;
             NSString *escaped=[table stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""]; sqlite3_stmt *columns=NULL;
             NSString *nameColumn=nil,*idColumn=nil; NSString *pragma=[NSString stringWithFormat:@"PRAGMA table_info(\"%@\")",escaped];
             if(sqlite3_prepare_v2(db,pragma.UTF8String,-1,&columns,NULL)==SQLITE_OK) while(sqlite3_step(columns)==SQLITE_ROW) {
@@ -134,7 +137,8 @@ static id ABMCInvoke(id target, NSString *name) { SEL selector=NSSelectorFromStr
 
 - (void)reloadShortcuts {
     NSMutableDictionary *results=[NSMutableDictionary dictionary];
-    [self readWorkflowKitInto:results];
+    // 不使用会混入 App Intent / 推荐项的泛化 WorkflowKit 枚举；
+    // “所有快捷指令”只以 Shortcuts.sqlite 的 ZSHORTCUT 为权威来源。
     NSArray *paths=[self databasePaths];
     for(NSString *path in paths) [self readWorkflowDatabase:path into:results];
     // Exported .shortcut files are a secondary source; the database remains authoritative.

@@ -40,8 +40,8 @@
             NSString *bundleID = [proxy respondsToSelector:@selector(bundleIdentifier)] ? [proxy bundleIdentifier] : nil;
             NSString *name = [proxy respondsToSelector:@selector(localizedName)] ? [proxy localizedName] : nil;
             if (!bundleID.length) continue;
-            UIImage *icon = ABMCIconImageForProxy(proxy);
-            unique[bundleID] = @{ @"bundleID": bundleID, @"name": name.length ? name : bundleID, @"icon": icon ?: [NSNull null] };
+            // 首次进入只读取轻量元数据，图标由可见单元格按需缓存加载。
+            unique[bundleID] = @{ @"bundleID": bundleID, @"name": name.length ? name : bundleID };
         }
     } @catch (NSException *exception) {}
     _apps = [[unique allValues] sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) { return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]]; }];
@@ -59,8 +59,17 @@
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.visibleApps.count; }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"AppCell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"AppCell"];
-    NSDictionary *item = self.visibleApps[path.row]; id icon = item[@"icon"];
-    cell.imageView.image = [icon isKindOfClass:[UIImage class]] ? icon : ABMCTintedIcon(@"app.fill", UIColor.systemBlueColor);
+    NSDictionary *item = self.visibleApps[path.row];
+    cell.imageView.image = ABMCTintedIcon(@"app.fill", UIColor.systemBlueColor);
+    NSString *bundleID = item[@"bundleID"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        UIImage *icon = ABMCIconImageForBundleID(bundleID);
+        if (!icon) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSIndexPath *current = [tableView indexPathForCell:cell];
+            if (current && current.row < self.visibleApps.count && [self.visibleApps[current.row][@"bundleID"] isEqualToString:bundleID]) cell.imageView.image = icon;
+        });
+    });
     cell.textLabel.font = [UIFont systemFontOfSize:17]; cell.detailTextLabel.font = [UIFont systemFontOfSize:13];
     cell.textLabel.text = item[@"name"]; cell.detailTextLabel.text = item[@"bundleID"];
     CFStringRef value = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain);

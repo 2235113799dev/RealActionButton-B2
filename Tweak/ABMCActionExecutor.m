@@ -582,8 +582,12 @@ BOOL ABMCPerformingDefaultAction = NO;
         NSArray *items=value&&CFGetTypeID(value)==CFDictionaryGetTypeID()?[(__bridge NSDictionary*)value objectForKey:panelID]:nil;
         if(value)CFRelease(value); if(![items isKindOfClass:NSArray.class]||items.count<2)return;
         NSArray *limited=[items subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,items.count))];
-        UIWindow *window=UIApplication.sharedApplication.keyWindow;
-        if(!window)for(UIWindow *candidate in UIApplication.sharedApplication.windows)if(candidate.isKeyWindow){window=candidate;break;}
+        UIWindow *window=nil;
+        for(UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if(![scene isKindOfClass:UIWindowScene.class] || scene.activationState!=UISceneActivationStateForegroundActive) continue;
+            for(UIWindow *candidate in ((UIWindowScene *)scene).windows) if(candidate.isKeyWindow){window=candidate;break;}
+            if(window) break;
+        }
         UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;
         if(!host)return;
         ABMCShortcutPanelController *panel=[[ABMCShortcutPanelController alloc]initWithItems:limited selection:^(NSDictionary *item){[self runShortcutIdentifier:item[@"identifier"] name:item[@"name"]];}];

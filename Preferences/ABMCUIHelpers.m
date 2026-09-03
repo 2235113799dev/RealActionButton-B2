@@ -103,30 +103,6 @@ UIImage *ABMCIconImageForBundleID(NSString *identifier) {
 }
 UIImage *ABMCIconImageForProxy(id application) { return ABMCIconImageForBundleID(ABMCBundleIdentifierForApplication(application)); }
 
-UIImage *ABMCShortcutIconForIdentifier(NSString *identifier) {
-    if (!identifier.length) return nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        dlopen("/System/Library/PrivateFrameworks/WorkflowKit.framework/WorkflowKit", RTLD_LAZY | RTLD_LOCAL);
-        dlopen("/System/Library/PrivateFrameworks/VoiceShortcutClient.framework/VoiceShortcutClient", RTLD_LAZY | RTLD_LOCAL);
-    });
-    @try {
-        Class databaseClass = NSClassFromString(@"WFDatabase");
-        id database = ObjectCall(databaseClass, @"defaultDatabase");
-        id reference = nil;
-        SEL referenceSelector = NSSelectorFromString(@"referenceForWorkflowID:");
-        if ([database respondsToSelector:referenceSelector]) reference = ((id (*)(id, SEL, id))objc_msgSend)(database, referenceSelector, identifier);
-        id workflowIcon = ObjectCall(reference, @"icon");
-        // WFWorkflowReference returns WFWorkflowIcon; the drawer consumes
-        // its underlying WFIcon for the exact per-shortcut glyph/background.
-        id icon = ObjectCall(workflowIcon, @"icon") ?: workflowIcon;
-        Class drawerClass = NSClassFromString(@"WFWorkflowIconDrawer");
-        SEL image = NSSelectorFromString(@"imageWithIcon:size:background:");
-        if (icon && [drawerClass respondsToSelector:image]) return ((id (*)(id, SEL, id, CGSize, BOOL))objc_msgSend)(drawerClass, image, icon, CGSizeMake(34, 34), YES);
-    } @catch (NSException *exception) {}
-    return nil;
-}
-
 UIImage *ABMCIconImage(NSString *token) {
     UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:24.0 weight:UIImageSymbolWeightMedium];
     UIImage *symbol = token.length ? [UIImage systemImageNamed:token withConfiguration:config] : nil;

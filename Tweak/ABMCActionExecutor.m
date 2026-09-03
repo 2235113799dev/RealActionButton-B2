@@ -11,9 +11,10 @@
 - (void)openFullscreenURL:(NSURL *)url;
 - (void)openSavedLink:(NSString *)linkID;
 - (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen;
+- (BOOL)launchAppThroughHomeScreenIcon:(NSString *)bundleID;
 - (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
-- (void)runShortcut:(NSString *)name fullscreen:(BOOL)fullscreen;
+- (void)runShortcut:(NSString *)name;
 - (void)runAppShortcutBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)showControlCenter;
 - (void)showNotificationCenter;
@@ -28,7 +29,6 @@ BOOL ABMCPerformingDefaultAction = NO;
     BOOL _useDirectFullscreenURLs;
     BOOL _useFullscreenApps;
     BOOL _useFullscreenAppShortcuts;
-    BOOL _useFullscreenShortcuts;
 }
 
 + (instancetype)sharedExecutor {
@@ -59,8 +59,8 @@ BOOL ABMCPerformingDefaultAction = NO;
         _doubleAction = dbl ? (__bridge_transfer NSString *)dbl : @"none";
         _longPressAction = longPress ? (__bridge_transfer NSString *)longPress : @"default";
 
-        NSArray *modeKeys = @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode", @"shortcutOpenMode"];
-        BOOL *modeTargets[] = { &_useDirectFullscreenURLs, &_useFullscreenApps, &_useFullscreenAppShortcuts, &_useFullscreenShortcuts };
+        NSArray *modeKeys = @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode"];
+        BOOL *modeTargets[] = { &_useDirectFullscreenURLs, &_useFullscreenApps, &_useFullscreenAppShortcuts };
         for (NSUInteger index = 0; index < modeKeys.count; index++) {
             CFPropertyListRef mode = CFPreferencesCopyAppValue((__bridge CFStringRef)modeKeys[index], PREFS_DOMAIN);
             *modeTargets[index] = (mode && CFGetTypeID(mode) == CFBooleanGetTypeID()) ? CFBooleanGetValue((CFBooleanRef)mode) : YES;
@@ -141,8 +141,7 @@ BOOL ABMCPerformingDefaultAction = NO;
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
         [self runShortcutIdentifier:parts.firstObject name:(parts.count > 1 ? parts[1] : @"")];
     } else if ([actionID hasPrefix:@"shortcut:"]) {
-        BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenShortcuts; }
-        [self runShortcut:[actionID substringFromIndex:9] fullscreen:fullscreen];
+        [self runShortcut:[actionID substringFromIndex:9]];
     }
 }
 
@@ -357,6 +356,27 @@ BOOL ABMCPerformingDefaultAction = NO;
 
 #pragma mark - Open App
 
+- (BOOL)launchAppThroughHomeScreenIcon:(NSString *)bundleID {
+    // FV hooks SpringBoard's normal icon-launch route. Never use
+    // LSApplicationWorkspace as a fallback here: it bypasses FV and can block
+    // SpringBoard waiting for a service reply.
+    @try {
+        Class controllerClass = NSClassFromString(@"SBIconController");
+        SEL shared = NSSelectorFromString(@"sharedInstance");
+        id controller = [controllerClass respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(controllerClass, shared) : nil;
+        id manager = [controller respondsToSelector:NSSelectorFromString(@"iconManager")] ? ((id (*)(id, SEL))objc_msgSend)(controller, NSSelectorFromString(@"iconManager")) : nil;
+        id model = [manager respondsToSelector:NSSelectorFromString(@"iconModel")] ? ((id (*)(id, SEL))objc_msgSend)(manager, NSSelectorFromString(@"iconModel")) : nil;
+        SEL iconForBundle = NSSelectorFromString(@"applicationIconForBundleIdentifier:");
+        id icon = [model respondsToSelector:iconForBundle] ? ((id (*)(id, SEL, id))objc_msgSend)(model, iconForBundle, bundleID) : nil;
+        SEL launch = NSSelectorFromString(@"iconModel:launchIcon:fromLocation:context:");
+        if (icon && [manager respondsToSelector:launch]) {
+            ((void (*)(id, SEL, id, id, id, id))objc_msgSend)(manager, launch, model, icon, nil, nil);
+            return YES;
+        }
+    } @catch (NSException *exception) {}
+    return NO;
+}
+
 - (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen {
     if (!bundleID.length) return;
     NSString *bid = [bundleID copy];
@@ -369,14 +389,10 @@ BOOL ABMCPerformingDefaultAction = NO;
                     ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(application, direct, bid, NO);
                     return;
                 }
-                // Compatibility route: preserves interception by existing
-                // split-screen / URL-routing tweaks without forcing a mode.
-                Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
-                SEL defaultWorkspace = NSSelectorFromString(@"defaultWorkspace");
-                id workspace = (workspaceClass && [workspaceClass respondsToSelector:defaultWorkspace]) ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, defaultWorkspace) : nil;
-                SEL open = NSSelectorFromString(@"openApplicationWithBundleID:");
-                if ([workspace respondsToSelector:open]) ((BOOL (*)(id, SEL, id))objc_msgSend)(workspace, open, bid);
-                else if ([application respondsToSelector:direct]) ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(application, direct, bid, NO);
+                // Off means icon-route only: FV gets the same interception
+                // point as a real Home Screen icon tap. No blocking direct
+                // launch fallback is used, so this cannot force full screen.
+                [self launchAppThroughHomeScreenIcon:bid];
             } @catch (NSException *exception) {}
         }
     });
@@ -455,44 +471,29 @@ BOOL ABMCPerformingDefaultAction = NO;
 }
 
 - (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
-    SEL typeSelector = NSSelectorFromString(@"type");
-    id (^find)(NSArray *) = ^id(NSArray *items) {
-        for (id item in items) {
-            NSString *itemType = [item respondsToSelector:typeSelector] ? ((id (*)(id, SEL))objc_msgSend)(item, typeSelector) : nil;
-            if ([itemType isEqualToString:type]) return item;
-        }
-        return nil;
-    };
+    // Never synchronously query SpringBoardServices here: this method runs in
+    // SpringBoard and that XPC route caused the Watchdog termination reported.
     Class proxyClass = NSClassFromString(@"LSApplicationProxy");
     SEL proxyForID = NSSelectorFromString(@"applicationProxyForIdentifier:");
     id proxy = [proxyClass respondsToSelector:proxyForID] ? ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxyForID, bundleIdentifier) : nil;
+    SEL typeSelector = NSSelectorFromString(@"type");
     SEL itemsSelector = NSSelectorFromString(@"staticShortcutItems");
-    id target = find([proxy respondsToSelector:itemsSelector] ? ((id (*)(id, SEL))objc_msgSend)(proxy, itemsSelector) : @[]);
-    if (target) return target;
-
-    // Query SpringBoard's own service for dynamic and managed shortcut items.
-    dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_LAZY | RTLD_LOCAL);
-    Class clientClass = NSClassFromString(@"SBSApplicationClient");
-    SEL checkout = NSSelectorFromString(@"checkOutClientWithClass:");
-    SEL serviceItems = NSSelectorFromString(@"applicationShortcutItemsOfTypes:forBundleIdentifier:");
-    SEL checkin = NSSelectorFromString(@"checkInClient:");
-    id client = nil;
-    @try {
-        if ([clientClass respondsToSelector:checkout]) client = ((id (*)(id, SEL, id))objc_msgSend)(clientClass, checkout, clientClass);
-        if ([client respondsToSelector:serviceItems]) target = find(((id (*)(id, SEL, unsigned long long, id))objc_msgSend)(client, serviceItems, ~0ULL, bundleIdentifier));
-    } @catch (NSException *exception) {}
-    @finally { if (client && [clientClass respondsToSelector:checkin]) ((void (*)(id, SEL, id))objc_msgSend)(clientClass, checkin, client); }
-    if (target) return target;
-
-    // Final static fallback: rebuild the Apple shortcut object from Info.plist.
+    for (id item in [proxy respondsToSelector:itemsSelector] ? ((id (*)(id, SEL))objc_msgSend)(proxy, itemsSelector) : @[]) {
+        NSString *itemType = [item respondsToSelector:typeSelector] ? ((id (*)(id, SEL))objc_msgSend)(item, typeSelector) : nil;
+        if ([itemType isEqualToString:type]) return item;
+    }
+    // Safe static fallback: rebuild Apple shortcut items from the app plist.
     NSURL *URL = [proxy respondsToSelector:NSSelectorFromString(@"bundleURL")] ? ((id (*)(id, SEL))objc_msgSend)(proxy, NSSelectorFromString(@"bundleURL")) : nil;
     NSArray *entries = [NSBundle bundleWithURL:URL].infoDictionary[@"UIApplicationShortcutItems"];
     Class itemClass = NSClassFromString(@"SBSApplicationShortcutItem");
     SEL create = NSSelectorFromString(@"_staticApplicationShortcutItemsFromInfoPlistEntry:");
     for (NSDictionary *entry in [entries isKindOfClass:[NSArray class]] ? entries : @[]) {
         if (![entry[@"UIApplicationShortcutItemType"] isEqualToString:type]) continue;
-        target = find([itemClass respondsToSelector:create] ? ((id (*)(id, SEL, id))objc_msgSend)(itemClass, create, entry) : @[]);
-        if (target) return target;
+        NSArray *rebuilt = [itemClass respondsToSelector:create] ? ((id (*)(id, SEL, id))objc_msgSend)(itemClass, create, entry) : @[];
+        for (id item in rebuilt) {
+            NSString *itemType = [item respondsToSelector:typeSelector] ? ((id (*)(id, SEL))objc_msgSend)(item, typeSelector) : nil;
+            if ([itemType isEqualToString:type]) return item;
+        }
     }
     return nil;
 }
@@ -530,22 +531,15 @@ BOOL ABMCPerformingDefaultAction = NO;
         } @catch (NSException *exception) {}
         // URL is intentionally only the final compatibility fallback when the
         // SpringBoard-specific system runner is unavailable on an OS build.
-        if (!submitted) {
-            BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenShortcuts; }
-            [self runShortcut:name fullscreen:fullscreen];
-        }
+        if (!submitted) [self runShortcut:name];
     });
 }
 
-- (void)runShortcut:(NSString *)name fullscreen:(BOOL)fullscreen {
+- (void)runShortcut:(NSString *)name {
     if (!name.length) return;
     NSString *encoded = [name stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];
     NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"shortcuts://run-shortcut?name=%@", encoded]];
     if (!url) return;
-    if (fullscreen) {
-        [self openFullscreenURL:url];
-        return;
-    }
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             SEL open = NSSelectorFromString(@"openURL:options:completionHandler:");

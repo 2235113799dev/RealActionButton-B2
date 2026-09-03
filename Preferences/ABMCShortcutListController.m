@@ -130,8 +130,9 @@ static BOOL ABMCContainsChinese(NSString *value) {
     }
     NSDictionary *item = items[path.row];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    UIImage *icon = ABMCShortcutIconForIdentifier(item[@"identifier"]);
-    ABMCApplyLargeIcon(cell, icon ?: ABMCTintedIcon(@"square.stack.3d.up.fill", UIColor.systemBlueColor));
+    // Fixed system Shortcuts icon: stable while scrolling and avoids expensive
+    // per-row WorkflowKit database/icon rendering.
+    ABMCApplyLargeIcon(cell, ABMCTintedIcon(@"square.stack.3d.up.fill", UIColor.systemBlueColor));
     cell.textLabel.font = [UIFont systemFontOfSize:18];
     cell.detailTextLabel.text = nil;
     cell.textLabel.text = item[@"name"];

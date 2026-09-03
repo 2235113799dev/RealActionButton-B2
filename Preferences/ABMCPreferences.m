@@ -1,7 +1,6 @@
 #import "ABMCPreferences.h"
 #import "ABMCUIHelpers.h"
 #import <Preferences/PSSpecifier.h>
-#import <Preferences/PSTableCell.h>
 
 #define PREFS_DOMAIN @"com.huynguyen.actionbuttonmulticlick"
 #define PREFS_NOTIFICATION @"com.huynguyen.actionbuttonmulticlick/prefsChanged"
@@ -67,6 +66,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [single setProperty:@"default" forKey:@"default"];
         [single setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [single setProperty:@"hand.tap.fill" forKey:@"iconToken"];
+        [single setProperty:ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor) forKey:@"iconImage"];
         [specs addObject:single];
 
         PSSpecifier *dbl = [PSSpecifier preferenceSpecifierNamed:@"双击动作"
@@ -80,6 +80,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [dbl setProperty:@"none" forKey:@"default"];
         [dbl setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [dbl setProperty:@"hand.tap.fill" forKey:@"iconToken"];
+        [dbl setProperty:ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor) forKey:@"iconImage"];
         [specs addObject:dbl];
 
         PSSpecifier *longPress = [PSSpecifier preferenceSpecifierNamed:@"长按动作"
@@ -93,6 +94,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [longPress setProperty:@"default" forKey:@"default"];
         [longPress setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [longPress setProperty:@"hand.tap.fill" forKey:@"iconToken"];
+        [longPress setProperty:ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor) forKey:@"iconImage"];
         [specs addObject:longPress];
 
         PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"启动方式"];
@@ -111,12 +113,12 @@ static NSString *titleForActionID(NSString *actionID) {
         [urlMode setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [urlMode setProperty:@YES forKey:@"default"];
         [urlMode setProperty:@"link" forKey:@"iconToken"];
+        [urlMode setProperty:ABMCTintedIcon(@"link", UIColor.systemBlueColor) forKey:@"iconImage"];
         [specs addObject:urlMode];
 
         NSArray *launchModes = @[
             @[@"应用全屏", @"appOpenMode", @"app.badge.checkmark"],
-            @[@"快捷方式全屏", @"appShortcutOpenMode", @"square.grid.2x2.fill"],
-            @[@"快捷指令全屏", @"shortcutOpenMode", @"square.stack.3d.up.fill"]
+            @[@"快捷方式全屏", @"appShortcutOpenMode", @"square.grid.2x2.fill"]
         ];
         for (NSArray *item in launchModes) {
             PSSpecifier *mode = [PSSpecifier preferenceSpecifierNamed:item[0] target:self set:@selector(setOpenMode:specifier:) get:@selector(openModeForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
@@ -125,6 +127,7 @@ static NSString *titleForActionID(NSString *actionID) {
             [mode setProperty:PREFS_DOMAIN forKey:@"defaults"];
             [mode setProperty:@YES forKey:@"default"];
             [mode setProperty:item[2] forKey:@"iconToken"];
+            [mode setProperty:ABMCTintedIcon(item[2], UIColor.systemBlueColor) forKey:@"iconImage"];
             [specs addObject:mode];
         }
 
@@ -167,15 +170,12 @@ static NSString *titleForActionID(NSString *actionID) {
             [spec setProperty:titleForActionID(actionID) forKey:@"cellValue"];
         }
     }
-    for (NSString *identifier in @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode", @"shortcutOpenMode"]) [self reloadSpecifierID:identifier];
+    for (NSString *identifier in @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode"]) [self reloadSpecifierID:identifier];
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
-    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
-    // PSSwitchCell owns the right-side switch. Assign its native icon property
-    // instead of touching imageView/accessoryView, which prevents misalignment.
-    NSString *icon = [specifier propertyForKey:@"iconToken"];
-    if ([cell isKindOfClass:[PSTableCell class]]) ((PSTableCell *)cell).icon = icon.length ? ABMCTintedIcon(icon, UIColor.systemBlueColor) : nil;
+    // Icons are fixed in each specifier's iconImage at construction time.
+    // Do not touch imageView/accessoryView here: PSSwitchCell owns its layout.
     return cell;
 }
 

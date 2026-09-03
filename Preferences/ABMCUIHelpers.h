@@ -15,7 +15,6 @@ NSString *ABMCBundleIdentifierForApplication(id application);
 NSString *ABMCDisplayNameForApplication(id application);
 UIImage *ABMCIconImageForBundleID(NSString *bundleID);
 UIImage *ABMCIconImageForProxy(id application);
-UIImage *ABMCShortcutIconForIdentifier(NSString *identifier);
 UIImage *ABMCIconImage(NSString *token);
 UIImage *ABMCTintedIcon(NSString *token, UIColor *color);
 NSString *ABMCInferLinkIcon(NSString *urlString);

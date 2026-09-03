@@ -50,11 +50,11 @@ static NSString *TitleForAction(NSString *action) {
 static UIImage *IconForAction(NSString *action) {
     const ActionInfo *info = InfoForAction(action);
     if (info) return ABMCTintedIcon(info->icon, UIColor.systemBlueColor);
-    if ([action hasPrefix:@"app:"]) return ABMCIconImageForBundleID([action substringFromIndex:4]);
-    if ([action hasPrefix:@"appshortcut:"]) { NSArray *p = [[action substringFromIndex:12] componentsSeparatedByString:@"|"]; return p.count ? ABMCIconImageForBundleID(p[0]) : nil; }
-    if ([action hasPrefix:@"shortcutid:"]) return ABMCShortcutIconForIdentifier([[[action substringFromIndex:11] componentsSeparatedByString:@"|"] firstObject]);
+    if ([action hasPrefix:@"app:"]) return ABMCIconImageForBundleID([action substringFromIndex:4]) ?: ABMCTintedIcon(@"app.badge.checkmark", UIColor.systemBlueColor);
+    if ([action hasPrefix:@"appshortcut:"]) { NSArray *p = [[action substringFromIndex:12] componentsSeparatedByString:@"|"]; return p.count ? (ABMCIconImageForBundleID(p[0]) ?: ABMCTintedIcon(@"square.grid.2x2.fill", UIColor.systemBlueColor)) : ABMCTintedIcon(@"square.grid.2x2.fill", UIColor.systemBlueColor); }
+    if ([action hasPrefix:@"shortcutid:"] || [action hasPrefix:@"shortcut:"]) return ABMCTintedIcon(@"square.stack.3d.up.fill", UIColor.systemBlueColor);
     if ([action hasPrefix:@"link:"] || [action hasPrefix:@"url:"]) return ABMCTintedIcon(@"link", UIColor.systemBlueColor);
-    return ABMCTintedIcon(@"questionmark.circle", UIColor.systemBlueColor);
+    return ABMCTintedIcon(@"hand.tap.fill", UIColor.systemBlueColor);
 }
 
 @interface ABMCActionListController ()
@@ -72,7 +72,7 @@ static UIImage *IconForAction(NSString *action) {
     PSSpecifier *test=[PSSpecifier preferenceSpecifierNamed:@"开始测试" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     [test setProperty:@"play.fill" forKey:@"iconToken"]; test->action=@selector(test:); [items addObject:test];
     [items addObject:[PSSpecifier groupSpecifierWithName:@"选择动作"]];
-    NSArray *entries=@[@[@"基础动作",@"builtin",@"hand.tap.fill"],@[@"应用列表",@"app",@"app.badge.checkmark"],@[@"快捷方式",@"appshortcut",@"square.grid.2x2.fill"],@[@"快捷指令",@"shortcut",@"square.stack.3d.up.fill"],@[@"URL",@"link",@"link"]];
+    NSArray *entries=@[@[@"基础动作",@"builtin",@"hand.tap.fill"],@[@"应用列表",@"app",@"app.badge.checkmark"],@[@"快捷方式",@"appshortcut",@"square.grid.2x2.fill"],@[@"指令列表",@"shortcut",@"square.stack.3d.up.fill"],@[@"URL",@"link",@"link"]];
     for (NSArray *entry in entries) { PSSpecifier *s=[PSSpecifier preferenceSpecifierNamed:entry[0] target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil]; [s setProperty:entry[1] forKey:@"category"]; [s setProperty:entry[2] forKey:@"iconToken"]; s->action=@selector(open:); [items addObject:s]; }
     _specifiers=items; return _specifiers;
 }

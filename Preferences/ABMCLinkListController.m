@@ -1,119 +1,22 @@
 #import "ABMCLinkListController.h"
+#import <UIKit/UIKit.h>
 
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCLinksKey CFSTR("savedLinks")
 #define ABMCChanged CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged")
-
-@implementation ABMCLinkListController {
-    NSString *_preferenceKey;
-    NSMutableArray *_links;
-}
-
-- (instancetype)initWithPreferenceKey:(NSString *)key {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        _preferenceKey = [key copy];
-        self.title = @"选择链接";
-    }
-    return self;
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addLink)];
-    [self loadLinks];
-}
-
-- (void)loadLinks {
-    _links = [NSMutableArray array];
-    CFPropertyListRef value = CFPreferencesCopyAppValue(ABMCLinksKey, ABMCDomain);
-    if (value && CFGetTypeID(value) == CFArrayGetTypeID()) {
-        for (id entry in (__bridge NSArray *)value) {
-            if ([entry isKindOfClass:[NSDictionary class]] && [entry[@"id"] isKindOfClass:[NSString class]] && [entry[@"title"] isKindOfClass:[NSString class]] && [entry[@"url"] isKindOfClass:[NSString class]]) [_links addObject:[entry mutableCopy]];
-        }
-    }
-    if (value) CFRelease(value);
-    [self.tableView reloadData];
-}
-
-- (void)saveLinks {
-    CFPreferencesSetAppValue(ABMCLinksKey, (__bridge CFPropertyListRef)_links, ABMCDomain);
-    CFPreferencesAppSynchronize(ABMCDomain);
-}
-
-- (NSString *)selectedLinkID {
-    CFStringRef value = CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain);
-    NSString *action = value ? [(__bridge NSString *)value copy] : nil;
-    if (value) CFRelease(value);
-    return [action hasPrefix:@"link:"] ? [action substringFromIndex:5] : nil;
-}
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 1; }
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return _links.count; }
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ABMCLinkCell"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ABMCLinkCell"];
-    NSDictionary *link = _links[indexPath.row];
-    cell.textLabel.text = link[@"title"];
-    cell.detailTextLabel.text = link[@"url"];
-    cell.accessoryType = [link[@"id"] isEqualToString:[self selectedLinkID]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSString *action = [@"link:" stringByAppendingString:_links[indexPath.row][@"id"]];
-    CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, ABMCDomain);
-    CFPreferencesAppSynchronize(ABMCDomain);
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES);
-    [self.navigationController popViewControllerAnimated:YES];
-}
-
-- (void)addLink { [self editLink:nil]; }
-
-- (void)editLink:(NSDictionary *)existing {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:existing ? @"编辑链接" : @"新增链接" message:nil preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) { field.placeholder = @"标题"; field.text = existing[@"title"]; }];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) { field.placeholder = @"URL-Scheme 或网址"; field.text = existing[@"url"]; field.autocapitalizationType = UITextAutocapitalizationTypeNone; field.autocorrectionType = UITextAutocorrectionTypeNo; }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *title = [alert.textFields[0].text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        NSString *urlString = [alert.textFields[1].text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        NSURL *url = [NSURL URLWithString:urlString];
-        NSCharacterSet *invalid = [NSCharacterSet controlCharacterSet];
-        BOOL valid = title.length && title.length <= 100 && urlString.length && urlString.length <= 4096 && url && url.scheme.length && [urlString rangeOfCharacterFromSet:invalid].location == NSNotFound && [urlString rangeOfCharacterFromSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].location == NSNotFound;
-        if (!valid) return;
-        NSMutableDictionary *item = [NSMutableDictionary dictionaryWithDictionary:existing ?: @{}];
-        if (![item[@"id"] isKindOfClass:[NSString class]]) item[@"id"] = [NSUUID UUID].UUIDString;
-        item[@"title"] = title; item[@"url"] = urlString;
-        NSUInteger index = existing ? [_links indexOfObject:existing] : NSNotFound;
-        if (index == NSNotFound) [_links addObject:item]; else _links[index] = item;
-        [self saveLinks]; [self.tableView reloadData];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UIContextualAction *edit = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"编辑" handler:^(UIContextualAction *action, __kindof UIView *sourceView, void (^completionHandler)(BOOL)) {
-        [self editLink:self->_links[indexPath.row]];
-        completionHandler(YES);
-    }];
-    edit.backgroundColor = [UIColor systemBlueColor];
-    UIContextualAction *delete = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"删除" handler:^(UIContextualAction *action, __kindof UIView *sourceView, void (^completionHandler)(BOOL)) {
-        [self tableView:tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:indexPath];
-        completionHandler(YES);
-    }];
-    return [UISwipeActionsConfiguration configurationWithActions:@[delete, edit]];
-}
-
-- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)style forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (style != UITableViewCellEditingStyleDelete) return;
-    NSString *deleted = _links[indexPath.row][@"id"];
-    if ([deleted isEqualToString:[self selectedLinkID]]) {
-        CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)@"none", ABMCDomain);
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES);
-    }
-    [_links removeObjectAtIndex:indexPath.row]; [self saveLinks];
-    [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-}
-
+static NSString *NormalizeURL(NSString *value){NSString*u=[value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];if(!u.length||u.length>4096||[u rangeOfCharacterFromSet:[NSCharacterSet controlCharacterSet]].location!=NSNotFound)return nil;NSURL*p=[NSURL URLWithString:u];if(!p.scheme.length){if([u rangeOfString:@"."].location==NSNotFound)return nil;u=[@"https://" stringByAppendingString:u];}u=[u stringByReplacingOccurrencesOfString:@" " withString:@"%20"];return [NSURL URLWithString:u].scheme.length?u:nil;}
+@implementation ABMCLinkListController{NSString*_preferenceKey;NSMutableArray*_links;NSString*_searchText;}
+- (instancetype)initWithPreferenceKey:(NSString*)key{if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_preferenceKey=[key copy];self.title=@"链接";}return self;}
+- (void)viewDidLoad{[super viewDidLoad];_searchText=@"";UISearchBar*b=[[UISearchBar alloc]initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,56)];b.placeholder=@"搜索链接";b.delegate=(id)self;self.tableView.tableHeaderView=b;self.navigationItem.rightBarButtonItems=@[[[UIBarButtonItem alloc]initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addLink)],[[UIBarButtonItem alloc]initWithTitle:@"导入" style:UIBarButtonItemStylePlain target:self action:@selector(importLink)]];[self loadLinks];}
+- (void)loadLinks{_links=[NSMutableArray array];CFPropertyListRef v=CFPreferencesCopyAppValue(ABMCLinksKey,ABMCDomain);if(v&&CFGetTypeID(v)==CFArrayGetTypeID())for(id x in(__bridge NSArray*)v)if([x isKindOfClass:[NSDictionary class]]&&[x[@"id"]isKindOfClass:[NSString class]]&&[x[@"title"]isKindOfClass:[NSString class]]&&[x[@"url"]isKindOfClass:[NSString class]])[_links addObject:[x mutableCopy]];if(v)CFRelease(v);}
+- (void)saveLinks{CFPreferencesSetAppValue(ABMCLinksKey,(__bridge CFPropertyListRef)_links,ABMCDomain);CFPreferencesAppSynchronize(ABMCDomain);}
+- (NSArray*)filtered{NSMutableArray*r=[NSMutableArray array];for(NSDictionary*x in _links)if(!_searchText.length||[x[@"title"]localizedCaseInsensitiveContainsString:_searchText]||[x[@"url"]localizedCaseInsensitiveContainsString:_searchText])[r addObject:x];return r;}
+- (NSInteger)tableView:(UITableView*)t numberOfRowsInSection:(NSInteger)s{return self.filtered.count;}
+- (UITableViewCell*)tableView:(UITableView*)t cellForRowAtIndexPath:(NSIndexPath*)p{UITableViewCell*c=[t dequeueReusableCellWithIdentifier:@"LinkCell"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"LinkCell"];NSDictionary*x=self.filtered[p.row];c.textLabel.text=x[@"title"];c.detailTextLabel.text=x[@"url"];CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey,ABMCDomain);c.accessoryType=v&&[(__bridge NSString*)v isEqualToString:[@"link:"stringByAppendingString:x[@"id"]]]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;if(v)CFRelease(v);return c;}
+- (void)tableView:(UITableView*)t didSelectRowAtIndexPath:(NSIndexPath*)p{NSDictionary*x=self.filtered[p.row];NSString*a=[@"link:"stringByAppendingString:x[@"id"]];CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey,(__bridge CFPropertyListRef)a,ABMCDomain);CFPreferencesAppSynchronize(ABMCDomain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),ABMCChanged,NULL,NULL,YES);[self.navigationController popViewControllerAnimated:YES];}
+- (void)editLink:(NSDictionary*)old{UIAlertController*a=[UIAlertController alertControllerWithTitle:old?@"编辑链接":@"新增链接" message:@"支持网页、域名和自定义 URL Scheme" preferredStyle:UIAlertControllerStyleAlert];[a addTextFieldWithConfigurationHandler:^(UITextField*f){f.placeholder=@"标题";f.text=old[@"title"]; }];[a addTextFieldWithConfigurationHandler:^(UITextField*f){f.placeholder=@"https://example.com 或 URL Scheme";f.text=old[@"url"];f.autocorrectionType=UITextAutocorrectionTypeNo;f.autocapitalizationType=UITextAutocapitalizationTypeNone;}];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction*x){NSString*t=[a.textFields[0].text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];NSString*u=NormalizeURL(a.textFields[1].text);if(!t.length||t.length>100||!u.length)return;NSMutableDictionary*d=[NSMutableDictionary dictionaryWithDictionary:old?:@{}];if(!d[@"id"])d[@"id"]=NSUUID.UUID.UUIDString;d[@"title"]=t;d[@"url"]=u;NSUInteger i=old?[_links indexOfObject:old]:NSNotFound;if(i==NSNotFound)[_links addObject:d];else _links[i]=d;[self saveLinks];[self.tableView reloadData];}]];[self presentViewController:a animated:YES completion:nil];}
+- (void)addLink{[self editLink:nil];}
+- (void)importLink{NSString*u=NormalizeURL([UIPasteboard generalPasteboard].string);if(!u.length){UIAlertController*a=[UIAlertController alertControllerWithTitle:@"导入失败" message:@"剪贴板没有可识别的网页或 URL Scheme。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];[self presentViewController:a animated:YES completion:nil];return;}[self editLink:@{ @"id":NSUUID.UUID.UUIDString,@"title":@"导入链接",@"url":u }];}
+- (UISwipeActionsConfiguration*)tableView:(UITableView*)t trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath*)p{NSDictionary*x=self.filtered[p.row];UIContextualAction*e=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"编辑" handler:^(UIContextualAction*a,UIView*v,void(^done)(BOOL)){[self editLink:x];done(YES);}];UIContextualAction*d=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"删除" handler:^(UIContextualAction*a,UIView*v,void(^done)(BOOL)){[_links removeObject:x];[self saveLinks];[self.tableView reloadData];done(YES);}];return [UISwipeActionsConfiguration configurationWithActions:@[d,e]];}
+- (void)searchBar:(UISearchBar*)b textDidChange:(NSString*)text{_searchText=[text copy];[self.tableView reloadData];}
 @end

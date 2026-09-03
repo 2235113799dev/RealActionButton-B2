@@ -5,109 +5,22 @@
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCChanged CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged")
 
+static NSString *ABMCValue(id obj, NSArray *names) {
+    for (NSString *name in names) { SEL s=NSSelectorFromString(name); if ([obj respondsToSelector:s]) { id v=((id(*)(id,SEL))objc_msgSend)(obj,s); if ([v isKindOfClass:[NSString class]] && [v length]) return v; } }
+    return nil;
+}
 @implementation ABMCShortcutListController {
     NSString *_preferenceKey;
     NSArray *_shortcuts;
+    NSString *_searchText;
 }
-
-- (instancetype)initWithPreferenceKey:(NSString *)key {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        _preferenceKey = [key copy];
-        self.title = @"选择指令";
-    }
-    return self;
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadShortcuts)];
-    [self loadShortcuts];
-}
-
-- (void)loadShortcuts {
-    NSMutableArray *items = [NSMutableArray array];
-    dlopen("/System/Library/PrivateFrameworks/WorkflowKit.framework/WorkflowKit", RTLD_LAZY | RTLD_LOCAL);
-    @try {
-        for (NSString *className in @[@"WFDatabase", @"WFWorkflowDatabase"]) {
-            Class databaseClass = NSClassFromString(className);
-            if (!databaseClass) continue;
-            id database = nil;
-            SEL selector = NSSelectorFromString(@"sharedDatabase");
-            if ([databaseClass respondsToSelector:selector]) database = ((id (*)(id, SEL))objc_msgSend)(databaseClass, selector);
-            if (!database) {
-                selector = NSSelectorFromString(@"sharedInstance");
-                if ([databaseClass respondsToSelector:selector]) database = ((id (*)(id, SEL))objc_msgSend)(databaseClass, selector);
-            }
-            for (NSString *methodName in @[@"sortedVisibleWorkflowsByName", @"allWorkflows", @"workflows"]) {
-                selector = NSSelectorFromString(methodName);
-                id workflows = (database && [database respondsToSelector:selector]) ? ((id (*)(id, SEL))objc_msgSend)(database, selector) : nil;
-                if (![workflows isKindOfClass:[NSArray class]]) continue;
-                for (id workflow in workflows) {
-                    NSString *name = [workflow respondsToSelector:@selector(name)] ? [workflow name] : nil;
-                    NSString *identifier = [workflow respondsToSelector:@selector(identifier)] ? [workflow identifier] : nil;
-                    if (name.length && identifier.length) [items addObject:@{@"name": name, @"identifier": identifier}];
-                }
-                if (items.count) break;
-            }
-            if (items.count) break;
-        }
-    } @catch (NSException *exception) {}
-    NSMutableDictionary *unique = [NSMutableDictionary dictionary];
-    for (NSDictionary *item in items) unique[item[@"identifier"]] = item;
-    _shortcuts = [[unique allValues] sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) { return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]]; }];
-    [self.tableView reloadData];
-    if (!_shortcuts.count) [self showManualEntry];
-}
-
-- (NSString *)selectedAction {
-    CFStringRef value = CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, ABMCDomain);
-    NSString *result = value ? [(__bridge NSString *)value copy] : nil;
-    if (value) CFRelease(value);
-    return result;
-}
-
-- (void)showManualEntry {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法读取指令库" message:@"可以手动输入快捷指令名称。包含打开 App、确认或输入等界面操作的指令，系统仍可能打开快捷指令 App。" preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.placeholder = @"快捷指令名称";
-        NSString *selected = [self selectedAction];
-        if ([selected hasPrefix:@"shortcut:"]) field.text = [selected substringFromIndex:9];
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *name = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (!name.length || name.length > 200) return;
-        NSString *saved = [@"shortcut:" stringByAppendingString:name];
-        CFPreferencesSetAppValue((__bridge CFStringRef)self->_preferenceKey, (__bridge CFPropertyListRef)saved, ABMCDomain);
-        CFPreferencesAppSynchronize(ABMCDomain);
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES);
-        [self.navigationController popViewControllerAnimated:YES];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 1; }
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return _shortcuts.count; }
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ABMCShortcutCell"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ABMCShortcutCell"];
-    NSDictionary *item = _shortcuts[indexPath.row];
-    cell.textLabel.text = item[@"name"];
-    cell.detailTextLabel.text = item[@"identifier"];
-    NSString *selected = [self selectedAction];
-    NSString *action = [NSString stringWithFormat:@"shortcutid:%@|%@", item[@"identifier"], item[@"name"]];
-    cell.accessoryType = [selected isEqualToString:action] || [selected isEqualToString:[@"shortcut:" stringByAppendingString:item[@"name"]]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *item = _shortcuts[indexPath.row];
-    NSString *action = [NSString stringWithFormat:@"shortcutid:%@|%@", item[@"identifier"], item[@"name"]];
-    CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, ABMCDomain);
-    CFPreferencesAppSynchronize(ABMCDomain);
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES);
-    [self.navigationController popViewControllerAnimated:YES];
-}
-
+- (instancetype)initWithPreferenceKey:(NSString *)key { if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_preferenceKey=[key copy];self.title=@"指令";}return self; }
+- (void)viewDidLoad { [super viewDidLoad]; _searchText=@""; UISearchBar *bar=[[UISearchBar alloc]initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,56)];bar.placeholder=@"搜索指令";bar.delegate=(id)self;self.tableView.tableHeaderView=bar; self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadShortcuts)];[self loadShortcuts]; }
+- (void)append:(id)obj to:(NSMutableDictionary *)unique { if([obj isKindOfClass:[NSDictionary class]]){NSString*n=obj[@"name"]?:obj[@"title"];NSString*i=obj[@"identifier"]?:obj[@"workflowIdentifier"]?:obj[@"id"];if([n isKindOfClass:[NSString class]]&&[i isKindOfClass:[NSString class]]&&n.length&&i.length)unique[i]=@{ @"name":n,@"identifier":i };return;}NSString*n=ABMCValue(obj,@[@"name",@"localizedName",@"displayName",@"title"]);NSString*i=ABMCValue(obj,@[@"identifier",@"workflowIdentifier",@"persistentIdentifier",@"recordIdentifier",@"uniqueIdentifier"]);if(n.length&&i.length)unique[i]=@{ @"name":n,@"identifier":i}; }
+- (void)loadShortcuts { NSMutableDictionary *unique=[NSMutableDictionary dictionary]; @try { dlopen("/System/Library/PrivateFrameworks/WorkflowKit.framework/WorkflowKit",RTLD_LAZY|RTLD_LOCAL); for(NSString*cn in @[@"WFWorkflowController",@"WFWorkflowManager",@"WFWorkflowStore",@"WFDatabase",@"WFWorkflowDatabase",@"ICDatabase",@"SGShortcutsController",@"SGShortcutsGenerator"]){Class c=NSClassFromString(cn);if(!c)continue;NSMutableArray*t=[NSMutableArray array];for(NSString*sn in @[@"sharedInstance",@"sharedDatabase",@"sharedStore",@"defaultDatabase",@"defaultStore",@"sharedController"]){SEL s=NSSelectorFromString(sn);if([c respondsToSelector:s]){id o=((id(*)(id,SEL))objc_msgSend)(c,s);if(o)[t addObject:o];}}if([c instancesRespondToSelector:NSSelectorFromString(@"shortcutsArray")]||[c instancesRespondToSelector:NSSelectorFromString(@"shortcuts")]){id o=[[c alloc]init];if(o)[t addObject:o];}for(id o in t){for(NSString*mn in @[@"allWorkflows",@"sortedVisibleWorkflowsByName",@"visibleWorkflows",@"workflows",@"shortcutsArray",@"shortcuts",@"allShortcuts",@"allWorkflowsSortedByName"]){SEL s=NSSelectorFromString(mn);if([o respondsToSelector:s]){id r=((id(*)(id,SEL))objc_msgSend)(o,s);if([r isKindOfClass:[NSArray class]])for(id x in r)[self append:x to:unique];}}}if(unique.count)break;}}@catch(NSException*e){} _shortcuts=[[unique allValues]sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];}];[self.tableView reloadData]; }
+- (NSArray*)filtered{NSMutableArray*r=[NSMutableArray array];for(NSDictionary*x in _shortcuts)if(!_searchText.length||[x[@"name"]localizedCaseInsensitiveContainsString:_searchText]||[x[@"identifier"]localizedCaseInsensitiveContainsString:_searchText])[r addObject:x];return r;}
+- (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section{return self.filtered.count;}
+- (UITableViewCell*)tableView:(UITableView*)tableView cellForRowAtIndexPath:(NSIndexPath*)p{UITableViewCell*c=[tableView dequeueReusableCellWithIdentifier:@"ShortcutCell"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ShortcutCell"];NSDictionary*x=self.filtered[p.row];c.textLabel.text=x[@"name"];c.detailTextLabel.text=x[@"identifier"];NSString*a=[NSString stringWithFormat:@"shortcutid:%@|%@",x[@"identifier"],x[@"name"]];CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey,ABMCDomain);c.accessoryType=v&&[(__bridge NSString*)v isEqualToString:a]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;if(v)CFRelease(v);return c;}
+- (void)tableView:(UITableView*)tableView didSelectRowAtIndexPath:(NSIndexPath*)p{NSDictionary*x=self.filtered[p.row];NSString*a=[NSString stringWithFormat:@"shortcutid:%@|%@",x[@"identifier"],x[@"name"]];CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey,(__bridge CFPropertyListRef)a,ABMCDomain);CFPreferencesAppSynchronize(ABMCDomain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),ABMCChanged,NULL,NULL,YES);[self.navigationController popViewControllerAnimated:YES];}
+- (void)searchBar:(UISearchBar*)bar textDidChange:(NSString*)text{_searchText=[text copy];[self.tableView reloadData];}
 @end

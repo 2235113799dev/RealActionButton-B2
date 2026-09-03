@@ -2,6 +2,7 @@
 #import "ABMCActionExecutor.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#define ABMC_TEST_NOTIFICATION CFSTR("com.huynguyen.actionbuttonmulticlick/testCurrentAction")
 
 static BOOL longPressActive = NO;
 static BOOL longPressUsesNativeAction = NO;
@@ -18,6 +19,13 @@ static void disableArbiterMultiClick(id buttonInstance) {
     }
 }
 
+static void testCurrentAction(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
+    CFStringRef value = (CFStringRef)CFPreferencesCopyAppValue(CFSTR("testAction"), CFSTR("com.huynguyen.actionbuttonmulticlick"));
+    NSString *action = value ? (__bridge_transfer NSString *)value : nil;
+    if (action.length && ![action isEqualToString:@"none"]) [[ABMCActionExecutor sharedExecutor] executeAction:action];
+    CFPreferencesSetAppValue(CFSTR("testAction"), NULL, CFSTR("com.huynguyen.actionbuttonmulticlick"));
+    CFPreferencesAppSynchronize(CFSTR("com.huynguyen.actionbuttonmulticlick"));
+}
 static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
     [[ABMCActionExecutor sharedExecutor] reloadPreferences];
 }
@@ -122,6 +130,15 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
         NULL,
         prefsChanged,
         CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged"),
+        NULL,
+        CFNotificationSuspensionBehaviorDeliverImmediately
+    );
+
+    CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        NULL,
+        testCurrentAction,
+        ABMC_TEST_NOTIFICATION,
         NULL,
         CFNotificationSuspensionBehaviorDeliverImmediately
     );

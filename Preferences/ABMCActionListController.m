@@ -8,6 +8,8 @@
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCChanged CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged")
 #define ABMCLinksKey CFSTR("savedLinks")
+#define ABMCTestNotification CFSTR("com.huynguyen.actionbuttonmulticlick/testCurrentAction")
+#define ABMCTestActionKey CFSTR("testAction")
 
 typedef struct { NSString *identifier; NSString *title; } ABMCBuiltinAction;
 static const ABMCBuiltinAction kBuiltinActions[] = {
@@ -36,6 +38,7 @@ static NSString *ABMCNormalizeLinkURL(NSString *value) {
 - (NSString *)displayForAction:(NSString *)action;
 - (void)loadDataIfNeeded;
 - (void)addLink;
+- (void)testCurrentAction:(PSSpecifier *)specifier;
 @end
 
 @implementation ABMCActionListController {
@@ -65,15 +68,16 @@ static NSString *ABMCNormalizeLinkURL(NSString *value) {
     self.title = @"选择动作";
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addLink)];
     [self loadDataIfNeeded];
-    [self updateCurrentHeader];
+    [self loadCurrentValue];
+    self.table.tableHeaderView = nil;
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self loadCurrentValue];
     [self loadDataIfNeeded];
+    _specifiers = nil;
     [self reloadSpecifiers];
-    [self updateCurrentHeader];
 }
 
 - (void)loadCurrentValue {
@@ -318,7 +322,7 @@ static BOOL ABMCColumnLooksLike(NSString *name, NSArray *candidates) {
         item[@"title"] = title; item[@"url"] = url;
         NSUInteger index = existing ? [self->_links indexOfObject:existing] : NSNotFound;
         if (index == NSNotFound) [self->_links addObject:item]; else self->_links[index] = item;
-        [self saveLinks]; self->_specifiers = nil; [self reloadSpecifiers]; [self updateCurrentHeader];
+        [self saveLinks]; self->_specifiers = nil; [self reloadSpecifiers];
     }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -354,6 +358,20 @@ static BOOL ABMCColumnLooksLike(NSString *name, NSArray *candidates) {
     [self loadDataIfNeeded];
     if (!_currentValue.length) [self loadCurrentValue];
     NSMutableArray *result = [NSMutableArray array];
+
+    PSSpecifier *selectedGroup = [PSSpecifier groupSpecifierWithName:@"已选择动作"];
+    [result addObject:selectedGroup];
+    PSSpecifier *selected = [PSSpecifier preferenceSpecifierNamed:[self displayForAction:_currentValue] target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];
+    [selected setProperty:@YES forKey:@"currentSelection"];
+    [result addObject:selected];
+
+    PSSpecifier *testGroup = [PSSpecifier groupSpecifierWithName:@"动作测试"];
+    [result addObject:testGroup];
+    PSSpecifier *test = [PSSpecifier preferenceSpecifierNamed:@"立即测试当前动作" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
+    [test setProperty:@YES forKey:@"testAction"];
+    test->action = @selector(testCurrentAction:);
+    [result addObject:test];
+
     [result addObject:[PSSpecifier groupSpecifierWithName:@"内置动作"]];
     [result addObject:[self searchSpecifier:@"builtin"]];
     NSUInteger count = sizeof(kBuiltinActions) / sizeof(kBuiltinActions[0]); BOOL found = NO;
@@ -382,7 +400,8 @@ static BOOL ABMCColumnLooksLike(NSString *name, NSArray *candidates) {
         found = YES; PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:link[@"title"] target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil]; [item setProperty:link[@"id"] forKey:@"linkID"]; [item setProperty:link[@"url"] forKey:@"linkURL"]; item->action = @selector(selectLink:); [result addObject:item];
     }
     if (!found) [result addObject:[self placeholderSpecifier:_links.count ? @"无匹配的链接" : @"暂无链接，点击右上角添加"]];
-    return result;
+    _specifiers = result;
+    return _specifiers;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -413,8 +432,20 @@ static BOOL ABMCColumnLooksLike(NSString *name, NSArray *candidates) {
     NSArray *groups = @[@"builtin", @"app", @"shortcut", @"link"]; NSInteger index = searchBar.tag - 9000; if (index < 0 || index >= groups.count) return; _searches[groups[index]] = searchText ?: @""; _specifiers = nil; [self reloadSpecifiers];
 }
 
+- (void)testCurrentAction:(PSSpecifier *)specifier {
+    if (!_currentValue.length || [_currentValue isEqualToString:@"none"]) return;
+    CFPreferencesSetAppValue(ABMCTestActionKey, (__bridge CFPropertyListRef)_currentValue, ABMCDomain);
+    CFPreferencesAppSynchronize(ABMCDomain);
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCTestNotification, NULL, NULL, YES);
+}
 - (void)saveAction:(NSString *)action {
-    if (!action.length) return; _currentValue = [action copy]; CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, ABMCDomain); CFPreferencesAppSynchronize(ABMCDomain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES); _specifiers = nil; [self reloadSpecifiers]; [self updateCurrentHeader];
+    if (!action.length) return;
+    _currentValue = [action copy];
+    CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, ABMCDomain);
+    CFPreferencesAppSynchronize(ABMCDomain);
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), ABMCChanged, NULL, NULL, YES);
+    _specifiers = nil;
+    [self reloadSpecifiers];
 }
 - (void)selectBuiltin:(PSSpecifier *)spec { [self saveAction:[spec propertyForKey:@"actionID"]]; }
 - (void)selectApp:(PSSpecifier *)spec { [self saveAction:[@"app:" stringByAppendingString:[spec propertyForKey:@"appBundleID"]]]; }

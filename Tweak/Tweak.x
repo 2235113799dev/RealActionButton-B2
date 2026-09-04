@@ -29,7 +29,9 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
     // Keep the real hardware context for a later single/double “系统默认” replay.
     [ABMCActionExecutor sharedExecutor].buttonInstance = self;
     [ABMCActionExecutor sharedExecutor].lastDownEvent = event;
-    if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) { %orig; return; }
+    // Do not forward down for an undecided short press. Forwarding it creates
+    // SpringBoard's Dynamic Island assertion even when this becomes a custom
+    // single/double action. The full native cycle is invoked only on default.
 }
 
 - (void)performActionsForButtonUp:(id)event {
@@ -43,10 +45,6 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
         return;
     }
 
-    // If native long press is enabled, SpringBoard received the real down
-    // event. It must also receive this short-release to dismiss its assertion
-    // / Dynamic Island state; below-long-press releases do not run its action.
-    if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) %orig;
     [[ABMCClickManager sharedManager] registerClick];
 }
 
@@ -55,10 +53,10 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
     longPressActive = YES;
     [[ABMCClickManager sharedManager] cancelPendingClicks];
     if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) {
-        // The real down event already reached SpringBoard. Do not replay it:
-        // native long press gets exactly one down → longPress → up sequence.
-        longPressUsesNativeAction = YES;
-        %orig;
+        // A real long press is now confirmed. Replay one complete original
+        // lifecycle; short custom clicks never create a native assertion.
+        longPressUsesNativeAction = NO;
+        [[ABMCActionExecutor sharedExecutor] executeAction:@"default"];
         return;
     }
     longPressUsesNativeAction = NO;
@@ -77,7 +75,9 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
     // Keep the real hardware context for a later single/double “系统默认” replay.
     [ABMCActionExecutor sharedExecutor].buttonInstance = self;
     [ABMCActionExecutor sharedExecutor].lastDownEvent = event;
-    if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) { %orig; return; }
+    // Do not forward down for an undecided short press. Forwarding it creates
+    // SpringBoard's Dynamic Island assertion even when this becomes a custom
+    // single/double action. The full native cycle is invoked only on default.
 }
 
 - (void)performActionsForButtonUp:(id)event {
@@ -91,10 +91,6 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
         return;
     }
 
-    // If native long press is enabled, SpringBoard received the real down
-    // event. It must also receive this short-release to dismiss its assertion
-    // / Dynamic Island state; below-long-press releases do not run its action.
-    if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) %orig;
     [[ABMCClickManager sharedManager] registerClick];
 }
 
@@ -103,10 +99,10 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
     longPressActive = YES;
     [[ABMCClickManager sharedManager] cancelPendingClicks];
     if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) {
-        // The real down event already reached SpringBoard. Do not replay it:
-        // native long press gets exactly one down → longPress → up sequence.
-        longPressUsesNativeAction = YES;
-        %orig;
+        // A real long press is now confirmed. Replay one complete original
+        // lifecycle; short custom clicks never create a native assertion.
+        longPressUsesNativeAction = NO;
+        [[ABMCActionExecutor sharedExecutor] executeAction:@"default"];
         return;
     }
     longPressUsesNativeAction = NO;

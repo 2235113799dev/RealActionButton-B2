@@ -50,3 +50,4 @@ UIImage *ABMCSelectedActionIcon(NSString *action);
 UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *controller, NSString *placeholder);
 void ABMCInstallStickyCategoryActionHeader(UITableViewController *controller, NSString *preferenceKey, NSString *placeholder);
 void ABMCUpdateStickyCategoryActionHeader(UITableViewController *controller);
+void ABMCRemoveStickyCategoryActionHeader(UITableViewController *controller);

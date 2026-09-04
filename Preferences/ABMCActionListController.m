@@ -5,6 +5,7 @@
 #import "ABMCBuiltinListController.h"
 #import "ABMCUIHelpers.h"
 #import <Preferences/PSSpecifier.h>
+#import <objc/runtime.h>
 
 #define Domain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define TestNotice CFSTR("com.huynguyen.actionbuttonmulticlick/testCurrentAction")
@@ -76,7 +77,7 @@ static UIImage *IconForAction(NSString *action) {
 @interface ABMCActionListController ()
 @end
 @implementation ABMCActionListController { NSString *_key; NSString *_fallback; NSString *_current; }
-- (void)viewDidLoad { [super viewDidLoad]; PSSpecifier *p=self.specifier; _key=[[p propertyForKey:@"key"] copy]; _fallback=[[p propertyForKey:@"default"] copy]; self.title=[p name].length?[p name]:@"选择动作"; self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(clearSelectedAction)]; }
+- (void)viewDidLoad { [super viewDidLoad]; PSSpecifier *p=self.specifier; _key=[[p propertyForKey:@"key"] copy]; _fallback=[[p propertyForKey:@"default"] copy]; self.title=[p name].length?[p name]:@"选择动作"; }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain); _current=v?(__bridge_transfer NSString *)v:(_fallback?:@"none"); _specifiers=nil; [self reloadSpecifiers]; }
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
@@ -95,7 +96,7 @@ static UIImage *IconForAction(NSString *action) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell=[super tableView:tableView cellForRowAtIndexPath:indexPath]; PSSpecifier *s=[self specifierAtIndexPath:indexPath];
     cell.accessoryView=nil; cell.imageView.hidden=NO; cell.imageView.image=nil; cell.textLabel.textColor=UIColor.labelColor; cell.textLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];
-    if ([s propertyForKey:@"selectedAction"]) { ABMCApplyLargeIcon(cell, IconForAction(_current)); cell.textLabel.textColor=ABMCUnifiedIconColor(); }
+    if ([s propertyForKey:@"selectedAction"]) { ABMCApplyLargeIcon(cell, IconForAction(_current)); cell.textLabel.textColor=ABMCUnifiedIconColor(); if(!objc_getAssociatedObject(cell,@selector(doubleTapSelected:))){UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(doubleTapSelected:)];tap.numberOfTapsRequired=2;[cell addGestureRecognizer:tap];objc_setAssociatedObject(cell,@selector(doubleTapSelected:),tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);} }
     else if ([[s propertyForKey:@"iconToken"] length]) { ABMCApplyLargeIcon(cell, ABMCTintedIcon([s propertyForKey:@"iconToken"], nil)); }
     else { NSString *key=[s propertyForKey:@"presentationKey"],*fallback=[s propertyForKey:@"defaultIcon"]; if (fallback.length) { NSString *token=ABMCDisplayIconToken(key,fallback); ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(@"square.grid.2x2.fill",nil)); } }
     return cell;
@@ -110,7 +111,8 @@ static UIImage *IconForAction(NSString *action) {
     UIContextualAction *clear=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"清空" handler:^(__unused UIContextualAction *a,__unused UIView *v,void(^done)(BOOL)){ABMCClearPresentationOverride(key); self->_specifiers=nil; [self reloadSpecifiers]; done(YES);}]; clear.backgroundColor=UIColor.systemGrayColor;
     return[UISwipeActionsConfiguration configurationWithActions:@[clear,edit]];
 }
-- (void)clearSelectedAction { UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"清空已选动作" message:@"将把当前按键动作恢复为无操作，不会删除应用、指令或 URL。" preferredStyle:UIAlertControllerStyleAlert];[alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[alert addAction:[UIAlertAction actionWithTitle:@"清空" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a){CFPreferencesSetAppValue((__bridge CFStringRef)self->_key,CFSTR("none"),Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged"),NULL,NULL,YES);self->_current=@"none";self->_specifiers=nil;[self reloadSpecifiers];}]];[self presentViewController:alert animated:YES completion:nil]; }
+- (void)doubleTapSelected:(UITapGestureRecognizer *)gesture { if(gesture.state==UIGestureRecognizerStateRecognized)[self clearCurrentAction]; }
+- (void)clearCurrentAction { UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"清空已选动作" message:@"将把当前按键动作恢复为无操作，不会删除应用、指令或 URL。" preferredStyle:UIAlertControllerStyleAlert];[alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[alert addAction:[UIAlertAction actionWithTitle:@"清空" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a){CFPreferencesSetAppValue((__bridge CFStringRef)self->_key,CFSTR("none"),Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged"),NULL,NULL,YES);self->_current=@"none";self->_specifiers=nil;[self reloadSpecifiers];}]];[self presentViewController:alert animated:YES completion:nil]; }
 - (void)open:(PSSpecifier *)specifier { NSString *category=[specifier propertyForKey:@"category"]; UIViewController *controller=nil; if([category isEqualToString:@"builtin"])controller=[[ABMCBuiltinListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"app"])controller=[[ABMCApplicationListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"shortcut"])controller=[[ABMCShortcutListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"link"])controller=[[ABMCLinkListController alloc]initWithPreferenceKey:_key]; if(controller)[self.navigationController pushViewController:controller animated:YES]; }
 - (void)test:(PSSpecifier *)specifier { if(!_current.length||[_current isEqualToString:@"none"])return; CFPreferencesSetAppValue(CFSTR("testAction"),(__bridge CFPropertyListRef)_current,Domain); CFPreferencesAppSynchronize(Domain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),TestNotice,NULL,NULL,YES); }
 @end

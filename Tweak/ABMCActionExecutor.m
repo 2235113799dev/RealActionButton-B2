@@ -12,7 +12,6 @@
 - (void)openFullscreenURL:(NSURL *)url;
 - (void)openSavedLink:(NSString *)linkID;
 - (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen;
-- (BOOL)launchAppThroughHomeScreenIcon:(NSString *)bundleID;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
 - (void)showShortcutPanel:(NSString *)panelID;
 - (void)runShortcut:(NSString *)name;
@@ -352,60 +351,18 @@ BOOL ABMCPerformingDefaultAction = NO;
 
 #pragma mark - Open App
 
-- (BOOL)launchAppThroughHomeScreenIcon:(NSString *)bundleID {
-    // Use SBHIconManager's real launch API. The previous
-    // iconModel:launchIcon: call was a delegate callback, not an activation.
-    // This is the same SpringBoard icon-launch pipeline that FV can hook.
-    @try {
-        Class controllerClass = NSClassFromString(@"SBIconController");
-        SEL shared = NSSelectorFromString(@"sharedInstance");
-        id controller = [controllerClass respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(controllerClass, shared) : nil;
-        id manager = [controller respondsToSelector:NSSelectorFromString(@"iconManager")] ? ((id (*)(id, SEL))objc_msgSend)(controller, NSSelectorFromString(@"iconManager")) : nil;
-        id model = [manager respondsToSelector:NSSelectorFromString(@"iconModel")] ? ((id (*)(id, SEL))objc_msgSend)(manager, NSSelectorFromString(@"iconModel")) : nil;
-        SEL findIcon = NSSelectorFromString(@"applicationIconForBundleIdentifier:");
-        id icon = [model respondsToSelector:findIcon] ? ((id (*)(id, SEL, id))objc_msgSend)(model, findIcon, bundleID) : nil;
-        Class iconViewClass = NSClassFromString(@"SBIconView");
-        SEL defaultLocation = NSSelectorFromString(@"defaultIconLocation");
-        id location = [iconViewClass respondsToSelector:defaultLocation] ? ((id (*)(id, SEL))objc_msgSend)(iconViewClass, defaultLocation) : nil;
-        SEL iconViewForIcon = NSSelectorFromString(@"iconViewForIcon:location:");
-        id iconView = (icon && [manager respondsToSelector:iconViewForIcon]) ? ((id (*)(id, SEL, id, id))objc_msgSend)(manager, iconViewForIcon, icon, location) : nil;
-        // Enter the same handler used by an actual finger tap. This preserves
-        // FV's SBIconView interception point; direct workspace/manager launch
-        // calls bypass that hook and force an ordinary full-screen launch.
-        // Let SpringBoard's icon controller perform the icon launch first.
-        // This is the same dispatcher reached from a Home Screen tap and is
-        // the stable interception point used by split-view tweaks.
-        SEL launch=NSSelectorFromString(@"launchIcon:");
-        if(icon&&[controller respondsToSelector:launch]) { ((void(*)(id,SEL,id))objc_msgSend)(controller,launch,icon); return YES; }
-        SEL tap = NSSelectorFromString(@"_handleTap");
-        if (iconView && [iconView respondsToSelector:tap]) { ((void (*)(id, SEL))objc_msgSend)(iconView, tap); return YES; }
-    } @catch (NSException *exception) {}
-    return NO;
-}
-
 - (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen {
+    (void)fullscreen; // Both modes use the stable asynchronous app launcher.
     if (!bundleID.length) return;
-    NSString *bid = [bundleID copy];
+    NSString *bid=[bundleID copy];
     dispatch_async(dispatch_get_main_queue(), ^{
-        @autoreleasepool {
-            @try {
-                if (fullscreen) {
-                    // Workspace owns normal iOS 17 multi-scene activation. Do
-                    // not call UIApplication launchApplicationWithIdentifier:
-                    // here: it can leave Settings on an empty scene.
-                    Class controllerClass=NSClassFromString(@"SBIconController"); SEL shared=NSSelectorFromString(@"sharedInstance");
-                    id controller=[controllerClass respondsToSelector:shared]?((id(*)(id,SEL))objc_msgSend)(controllerClass,shared):nil;
-                    id appController=[controller respondsToSelector:NSSelectorFromString(@"applicationController")]?((id(*)(id,SEL))objc_msgSend)(controller,NSSelectorFromString(@"applicationController")):nil;
-                    SEL applicationForID=NSSelectorFromString(@"applicationWithBundleIdentifier:"); id target=[appController respondsToSelector:applicationForID]?((id(*)(id,SEL,id))objc_msgSend)(appController,applicationForID,bid):nil;
-                    Class workspaceClass=NSClassFromString(@"SBMainWorkspace"); SEL workspaceShared=NSSelectorFromString(@"sharedInstance"); id workspace=[workspaceClass respondsToSelector:workspaceShared]?((id(*)(id,SEL))objc_msgSend)(workspaceClass,workspaceShared):nil;
-                    SEL open=NSSelectorFromString(@"openApplication:withOptions:");
-                    if(target&&[workspace respondsToSelector:open]) { ((void(*)(id,SEL,id,id))objc_msgSend)(workspace,open,target,@{}); return; }
-                }
-                // Off uses the exact icon interaction point for split-screen
-                // tweaks. It deliberately has no direct-launch fallback.
-                [self launchAppThroughHomeScreenIcon:bid];
-            } @catch (NSException *exception) {}
-        }
+        @autoreleasepool { @try {
+            // SQ's static implementation uses this asynchronous SpringBoard
+            // UIApplication route. App launch is independent of URL actions:
+            // WeChat/Alipay scan and pay continue through openURLString only.
+            SEL launch=NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
+            if([UIApplication.sharedApplication respondsToSelector:launch]) ((BOOL(*)(id,SEL,id,BOOL))objc_msgSend)(UIApplication.sharedApplication,launch,bid,NO);
+        } @catch(NSException *exception) {} }
     });
 }
 

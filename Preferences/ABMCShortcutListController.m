@@ -1,5 +1,6 @@
 #import "ABMCShortcutListController.h"
 #import "ABMCUIHelpers.h"
+#import <objc/message.h>
 #import <sqlite3.h>
 #define Domain CFSTR("com.huynguyen.actionbuttonmulticlick")
 

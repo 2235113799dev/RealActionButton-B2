@@ -14,6 +14,5 @@ static BOOL UUIDOK(NSString *value){return[value isKindOfClass:NSString.class]&&
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path { NSArray *shown=self.visible;if(!shown.count)return;NSDictionary *item=shown[path.row];NSString *action=[NSString stringWithFormat:@"shortcutid:%@|%@|%@|%@",item[@"id"],item[@"name"],item[@"glyph"],item[@"color"]];NSMutableArray *selected=[ABMCSelectedActions(_key) mutableCopy];if([selected containsObject:action])[selected removeObject:action];else if(selected.count<8)[selected addObject:action];else return;ABMCStoreSelectedActions(_key,selected);[self refreshHeader];[tableView reloadData]; }
 - (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; ABMCUpdateStickyCategoryActionHeader(self); }
 - (void)viewDidDisappear:(BOOL)animated { [super viewDidDisappear:animated]; if(self.isMovingFromParentViewController || self.navigationController==nil) ABMCRemoveStickyCategoryActionHeader(self); }
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView { ABMCUpdateStickyCategoryActionHeader(self); }
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text {_query=[text copy]?:@"";[self.tableView reloadData];}
 @end

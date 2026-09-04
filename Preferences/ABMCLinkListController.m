@@ -31,5 +31,4 @@ static NSString *ValidURL(NSString*v){v=[v stringByTrimmingCharactersInSet:NSCha
 
 - (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; ABMCUpdateStickyCategoryActionHeader(self); }
 - (void)viewDidDisappear:(BOOL)animated { [super viewDidDisappear:animated]; if(self.isMovingFromParentViewController || self.navigationController==nil) ABMCRemoveStickyCategoryActionHeader(self); }
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView { ABMCUpdateStickyCategoryActionHeader(self); }
 - (void)searchBar:(UISearchBar*)s textDidChange:(NSString*)text{_query=[text copy]?:@"";[self.tableView reloadData];}@end

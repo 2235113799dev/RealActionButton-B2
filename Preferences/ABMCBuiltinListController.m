@@ -15,5 +15,4 @@ static const ABMCBuiltinAction kActions[]={ {@"default",@"系统默认",@"gearsh
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p{NSInteger i=[self raw:p.row];NSString*a=kActions[i].identifier;NSMutableArray*x=[ABMCSelectedActions(_key)mutableCopy];if([x containsObject:a])[x removeObject:a];else if(x.count<8)[x addObject:a];else return;ABMCStoreSelectedActions(_key,x);[self refreshHeader];[t reloadData];}
 - (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; ABMCUpdateStickyCategoryActionHeader(self); }
 - (void)viewDidDisappear:(BOOL)animated { [super viewDidDisappear:animated]; if(self.isMovingFromParentViewController || self.navigationController==nil) ABMCRemoveStickyCategoryActionHeader(self); }
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView { ABMCUpdateStickyCategoryActionHeader(self); }
 - (void)searchBar:(UISearchBar *)s textDidChange:(NSString *)text{_query=[text copy]?:@"";[self.tableView reloadData];}@end

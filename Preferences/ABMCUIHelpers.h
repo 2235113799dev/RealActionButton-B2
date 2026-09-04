@@ -46,3 +46,7 @@ NSString *ABMCInferLinkIcon(NSString *urlString);
 NSString *ABMCApplicationName(NSString *bundleID);
 void ABMCApplyLargeIcon(UITableViewCell *cell, UIImage *image);
 UIImage *ABMCSelectedActionIcon(NSString *action);
+/// Shared category header: aligned search field plus selected-action card.
+UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *controller, NSString *placeholder);
+void ABMCInstallStickyCategoryActionHeader(UITableViewController *controller, NSString *preferenceKey, NSString *placeholder);
+void ABMCUpdateStickyCategoryActionHeader(UITableViewController *controller);

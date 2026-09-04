@@ -10,6 +10,9 @@ typedef NS_ENUM(NSInteger, ABMCApplicationKind) {
 /// Preferences-only system services. No third-party framework is loaded,
 /// bundled, or injected by B2.
 NSArray *ABMCInstalledApplications(void);
+/// Prebuilt display records for the application action page. Warm this before navigation.
+NSArray<NSDictionary *> *ABMCActionApplicationRecords(void);
+void ABMCPrewarmActionApplicationRecords(void);
 ABMCApplicationKind ABMCApplicationKindForProxy(id application);
 NSString *ABMCBundleIdentifierForApplication(id application);
 NSString *ABMCDisplayNameForApplication(id application);

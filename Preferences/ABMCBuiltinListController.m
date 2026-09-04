@@ -13,7 +13,7 @@ static const ABMCBuiltinAction kActions[]={ {@"default",@"系统默认",@"gearsh
 - (void)installSearchHeader {
     CGFloat width=self.tableView.bounds.size.width;if(width<100)width=UIScreen.mainScreen.bounds.size.width;
     UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,60)];header.autoresizingMask=UIViewAutoresizingFlexibleWidth;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
-    UISearchBar *search=[[UISearchBar alloc]initWithFrame:CGRectMake(8,0,width-16,56)];search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.placeholder=@"搜索基础动作";search.delegate=self;[header addSubview:search];self.tableView.tableHeaderView=header;
+    UISearchBar *search=[[UISearchBar alloc]initWithFrame:CGRectMake(20,0,width-40,56)];search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.placeholder=@"搜索基础动作";search.delegate=self;[header addSubview:search];self.tableView.tableHeaderView=header;
 }
 
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p{NSInteger i=[self raw:p.row];NSString*a=kActions[i].identifier;NSMutableArray*x=[ABMCSelectedActions(_key)mutableCopy];if([x containsObject:a])[x removeObject:a];else if(x.count<8)[x addObject:a];else return;ABMCStoreSelectedActions(_key,x);[t reloadData];}

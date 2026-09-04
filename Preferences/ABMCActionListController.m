@@ -59,7 +59,7 @@ static UIImage *IconForAction(NSString *action) { return ABMCSelectedActionIcon(
 @interface ABMCActionListController ()
 @end
 @implementation ABMCActionListController { NSString *_key; NSString *_fallback; NSString *_current; }
-- (void)viewDidLoad { [super viewDidLoad]; PSSpecifier *p=self.specifier; _key=[[p propertyForKey:@"key"] copy]; _fallback=[[p propertyForKey:@"default"] copy]; self.title=[p name].length?[p name]:@"选择动作"; }
+- (void)viewDidLoad { [super viewDidLoad]; ABMCPrewarmActionApplicationRecords(); PSSpecifier *p=self.specifier; _key=[[p propertyForKey:@"key"] copy]; _fallback=[[p propertyForKey:@"default"] copy]; self.title=[p name].length?[p name]:@"选择动作"; }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain); _current=v?(__bridge_transfer NSString *)v:(_fallback?:@"none"); _specifiers=nil; [self reloadSpecifiers]; }
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
@@ -89,5 +89,5 @@ static UIImage *IconForAction(NSString *action) { return ABMCSelectedActionIcon(
 - (void)clearCurrentAction { ABMCStoreSelectedActions(_key,@[]);_current=@"none";_specifiers=nil;[self reloadSpecifiers]; }
 
 - (void)open:(PSSpecifier *)specifier { NSString *category=[specifier propertyForKey:@"category"]; UIViewController *controller=nil; if([category isEqualToString:@"builtin"])controller=[[ABMCBuiltinListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"app"])controller=[[ABMCApplicationListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"shortcut"])controller=[[ABMCShortcutListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"link"])controller=[[ABMCLinkListController alloc]initWithPreferenceKey:_key]; if(controller)[self.navigationController pushViewController:controller animated:YES]; }
-- (void)test:(PSSpecifier *)specifier { if(!_current.length||[_current isEqualToString:@"none"]||[_current isEqualToString:@"default"])return; CFPreferencesSetAppValue(CFSTR("testAction"),(__bridge CFPropertyListRef)_current,Domain); CFPreferencesAppSynchronize(Domain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),TestNotice,NULL,NULL,YES); }
+- (void)test:(PSSpecifier *)specifier { if(!_current.length||[_current isEqualToString:@"none"])return; if([_current isEqualToString:@"default"]){UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"系统默认" message:@"系统默认必须由真实操作按钮的硬件事件触发。为避免在设置页伪造事件导致异常，请通过实际单击、双击或长按验证。" preferredStyle:UIAlertControllerStyleAlert];[alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];[self presentViewController:alert animated:YES completion:nil];return;} CFPreferencesSetAppValue(CFSTR("testAction"),(__bridge CFPropertyListRef)_current,Domain); CFPreferencesAppSynchronize(Domain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),TestNotice,NULL,NULL,YES); }
 @end

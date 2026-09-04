@@ -81,6 +81,16 @@ NSArray *ABMCInstalledApplications(void) {
     NSArray *snapshot=[result copy]; @synchronized([NSProcessInfo processInfo]) { cached=snapshot; cacheDate=now; } return snapshot;
 }
 
+static NSArray<NSDictionary *> *ABMCActionAppRecords; static BOOL ABMCActionAppRecordsBuilding;
+NSArray<NSDictionary *> *ABMCActionApplicationRecords(void) {
+    @synchronized([NSProcessInfo processInfo]) { if(ABMCActionAppRecords)return ABMCActionAppRecords; }
+    NSMutableArray *out=[NSMutableArray array];NSSet *blocked=[NSSet setWithArray:@[@"AccountAuthenticationDialog",@"AirDrop",@"AirPlayReceiver",@"AskToMessagesHost",@"BacklinkIndicator",@"CarPlaySetup",@"CarPlaySplashScreen",@"CarPlayWallpaper",@"CheckerBoard",@"CheckerBoardRemoteSetup",@"ContactPhotoCarouselRemoteAlert",@"CTCarrierSpaceAuth",@"DemoApp",@"EyeReliefUI",@"ReplayKitAngel",@"ScreenTimeUnlock",@"SleepLockScreen",@"SLYahooAuth",@"SpringBoardEducation",@"TrustMe",@"Web",@"WebContentAnalysisUI",@"WebSheet"]];
+    for(id proxy in ABMCInstalledApplications()){NSString *bid=ABMCBundleIdentifierForApplication(proxy),*name=ABMCDisplayNameForApplication(proxy);if(bid.length&&name.length&&ABMCApplicationHasRealIcon(proxy)&&![blocked containsObject:name])[out addObject:@{@"id":bid,@"name":name}];}
+    NSArray *ordered=[out sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];}];NSMutableArray *deduped=[NSMutableArray array];NSMutableSet *names=[NSMutableSet set];for(NSDictionary *item in ordered){NSString *name=[item[@"name"] lowercaseString];if(name.length&&![names containsObject:name]){[names addObject:name];[deduped addObject:item];}}
+    NSArray *snapshot=[deduped copy];@synchronized([NSProcessInfo processInfo]){ABMCActionAppRecords=snapshot;ABMCActionAppRecordsBuilding=NO;}return snapshot;
+}
+void ABMCPrewarmActionApplicationRecords(void) { @synchronized([NSProcessInfo processInfo]){if(ABMCActionAppRecords||ABMCActionAppRecordsBuilding)return;ABMCActionAppRecordsBuilding=YES;}dispatch_async(dispatch_get_main_queue(),^{ABMCActionApplicationRecords();}); }
+
 #define ABMCDomain CFSTR("com.huynguyen.actionbuttonmulticlick")
 #define ABMCPresentationKey CFSTR("presentationOverrides")
 #define ABMCUnifiedPointSizeKey CFSTR("unifiedIconSize")

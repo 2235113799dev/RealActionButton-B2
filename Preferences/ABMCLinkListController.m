@@ -9,7 +9,7 @@ static NSString *ValidURL(NSString*v){v=[v stringByTrimmingCharactersInSet:NSCha
 - (void)installSearchHeader {
     CGFloat width=self.tableView.bounds.size.width;if(width<100)width=UIScreen.mainScreen.bounds.size.width;
     UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,60)];header.autoresizingMask=UIViewAutoresizingFlexibleWidth;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
-    UISearchBar *search=[[UISearchBar alloc]initWithFrame:CGRectMake(8,0,width-16,56)];search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.placeholder=@"搜索 URL";search.delegate=self;[header addSubview:search];self.tableView.tableHeaderView=header;
+    UISearchBar *search=[[UISearchBar alloc]initWithFrame:CGRectMake(20,0,width-40,56)];search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.placeholder=@"搜索 URL";search.delegate=self;[header addSubview:search];self.tableView.tableHeaderView=header;
 }
 
 - (void)load{_links=[NSMutableArray array];CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("savedLinks"),D);if(v&&CFGetTypeID(v)==CFArrayGetTypeID())for(NSDictionary*x in (__bridge NSArray*)v)if([x[@"id"] length]&&[x[@"title"] length]&&[x[@"url"] length])[_links addObject:[x mutableCopy]];if(v)CFRelease(v);}

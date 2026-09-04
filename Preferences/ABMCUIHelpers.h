@@ -44,6 +44,3 @@ NSString *ABMCInferLinkIcon(NSString *urlString);
 NSString *ABMCApplicationName(NSString *bundleID);
 void ABMCApplyLargeIcon(UITableViewCell *cell, UIImage *image);
 UIImage *ABMCSelectedActionIcon(NSString *action);
-/// Fixed renderer used by every category page row (including URL two-line rows).
-UITableViewCell *ABMCReusableActionCell(UITableView *table, NSString *identifier, BOOL twoLine);
-void ABMCConfigureActionCell(UITableViewCell *cell, UIImage *image, NSString *title, NSString *subtitle);

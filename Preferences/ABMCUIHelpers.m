@@ -157,9 +157,10 @@ static NSDictionary *ABMCLinkRecord(NSString *identifier);
 // Fixed geometry for every selected-action banner. UITableView headers are
 // full-width, so these are the same visual insets used by InsetGrouped rows.
 static const CGFloat kABMCSelectedCardInset = 20.0;
+// Match the actual icon and title columns of the root Preferences cells.
 static const CGFloat kABMCSelectedIconX = 22.0;
 static const CGFloat kABMCSelectedTitleX = 64.0;
-static const CGFloat kABMCSelectedRowHeight = 47.0;
+static const CGFloat kABMCSelectedRowHeight = 44.0;
 static const CGFloat kABMCSelectedIconMaximum = 30.0;
 static const CGFloat kABMCSelectedTextSize = 18.0;
 static NSString *ABMCBriefPresentationKey(NSString *action) {
@@ -197,7 +198,7 @@ UIView *ABMCSelectedActionsBanner(NSString *preferenceKey, UIViewController *con
     UIView *box=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];box.autoresizingMask=UIViewAutoresizingFlexibleWidth;
     UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(kABMCSelectedCardInset,2,240,20)];caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[box addSubview:caption];
     UIView *card=[[UIView alloc]initWithFrame:CGRectMake(kABMCSelectedCardInset,top,box.bounds.size.width-kABMCSelectedCardInset*2,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=15;[box addSubview:card];
-    NSArray *rows=items.count?items:@[@"none"];for(NSUInteger i=0;i<rows.count;i++){NSString *action=rows[i];BOOL none=[action isEqualToString:@"none"];UIView *rowView=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,card.bounds.size.width,row)];rowView.autoresizingMask=UIViewAutoresizingFlexibleWidth;rowView.userInteractionEnabled=YES;[card addSubview:rowView];UIImageView *image=[[UIImageView alloc]initWithImage:none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action)];CGFloat iconSize=MIN(kABMCSelectedIconMaximum,30.0);image.frame=CGRectMake(kABMCSelectedIconX,(row-iconSize)*.5,iconSize,iconSize);image.contentMode=UIViewContentModeScaleAspectFit;[rowView addSubview:image];UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(kABMCSelectedTitleX,0,rowView.bounds.size.width-kABMCSelectedTitleX-10,row)];label.autoresizingMask=UIViewAutoresizingFlexibleWidth;label.text=none?@"无操作":ABMCBriefActionTitle(action);label.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;label.font=[UIFont systemFontOfSize:kABMCSelectedTextSize weight:UIFontWeightRegular];[rowView addSubview:label];ABMCSelectedRowTarget *target=[ABMCSelectedRowTarget new];target.controller=controller;target.preferenceKey=preferenceKey;target.action=action;UILongPressGestureRecognizer *longPress=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];longPress.minimumPressDuration=.45;[rowView addGestureRecognizer:longPress];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[rowView addGestureRecognizer:doubleTap];objc_setAssociatedObject(rowView,@selector(ABMCSelectedActionsBanner),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<rows.count){UIView *line=[[UIView alloc]initWithFrame:CGRectMake(kABMCSelectedTitleX,row-0.5,rowView.bounds.size.width-kABMCSelectedTitleX,.5)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.backgroundColor=UIColor.separatorColor;[rowView addSubview:line];}}
+    NSArray *rows=items.count?items:@[@"none"];for(NSUInteger i=0;i<rows.count;i++){NSString *action=rows[i];BOOL none=[action isEqualToString:@"none"];UIView *rowView=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,card.bounds.size.width,row)];rowView.autoresizingMask=UIViewAutoresizingFlexibleWidth;rowView.userInteractionEnabled=YES;[card addSubview:rowView];UIImageView *image=[[UIImageView alloc]initWithImage:none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action)];CGFloat iconSize=MIN(kABMCSelectedIconMaximum,ABMCUnifiedIconSize());image.frame=CGRectMake(kABMCSelectedIconX,(row-iconSize)*.5,iconSize,iconSize);image.contentMode=UIViewContentModeScaleAspectFit;[rowView addSubview:image];UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(kABMCSelectedTitleX,0,rowView.bounds.size.width-kABMCSelectedTitleX-10,row)];label.autoresizingMask=UIViewAutoresizingFlexibleWidth;label.text=none?@"无操作":ABMCBriefActionTitle(action);label.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;label.font=[UIFont systemFontOfSize:kABMCSelectedTextSize weight:UIFontWeightRegular];[rowView addSubview:label];ABMCSelectedRowTarget *target=[ABMCSelectedRowTarget new];target.controller=controller;target.preferenceKey=preferenceKey;target.action=action;UILongPressGestureRecognizer *longPress=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];longPress.minimumPressDuration=.45;[rowView addGestureRecognizer:longPress];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[rowView addGestureRecognizer:doubleTap];objc_setAssociatedObject(rowView,@selector(ABMCSelectedActionsBanner),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<rows.count){UIView *line=[[UIView alloc]initWithFrame:CGRectMake(kABMCSelectedTitleX,row-0.5,rowView.bounds.size.width-kABMCSelectedTitleX,.5)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.backgroundColor=UIColor.separatorColor;[rowView addSubview:line];}}
     return box;
 }
 
@@ -321,33 +322,6 @@ void ABMCApplyLargeIcon(UITableViewCell *cell, UIImage *image) {
     cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
     cell.imageView.tintColor = UIColor.systemBlueColor;
 }
-
-static const NSInteger kABMCActionIconTag = 341901;
-static const NSInteger kABMCActionTitleTag = 341902;
-static const NSInteger kABMCActionSubtitleTag = 341903;
-@interface ABMCFixedActionCell : UITableViewCell @end
-@implementation ABMCFixedActionCell
-- (void)layoutSubviews {
-    [super layoutSubviews]; BOOL twoLine=![(UILabel *)[self.contentView viewWithTag:kABMCActionSubtitleTag] isHidden];CGFloat h=CGRectGetHeight(self.contentView.bounds),w=CGRectGetWidth(self.contentView.bounds);
-    UIImageView *icon=[self.contentView viewWithTag:kABMCActionIconTag];UILabel *title=[self.contentView viewWithTag:kABMCActionTitleTag];UILabel *subtitle=[self.contentView viewWithTag:kABMCActionSubtitleTag];
-    icon.frame=CGRectMake(22,(h-30)*.5,30,30);title.frame=CGRectMake(64,twoLine?8:0,MAX(0,w-94),twoLine?25:h);subtitle.frame=CGRectMake(64,33,MAX(0,w-94),22);
-}
-@end
-UITableViewCell *ABMCReusableActionCell(UITableView *table, NSString *identifier, BOOL twoLine) {
-    ABMCFixedActionCell *cell=[table dequeueReusableCellWithIdentifier:identifier];
-    if(cell) return cell;
-    cell=[[ABMCFixedActionCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
-    cell.backgroundColor=UIColor.clearColor;cell.contentView.backgroundColor=UIColor.clearColor;cell.textLabel.hidden=YES;
-    UIImageView *icon=[UIImageView new];icon.tag=kABMCActionIconTag;icon.contentMode=UIViewContentModeScaleAspectFit;[cell.contentView addSubview:icon];
-    UILabel *title=[UILabel new];title.tag=kABMCActionTitleTag;title.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];title.textColor=UIColor.labelColor;title.numberOfLines=1;[cell.contentView addSubview:title];
-    UILabel *subtitle=[UILabel new];subtitle.tag=kABMCActionSubtitleTag;subtitle.font=[UIFont systemFontOfSize:14 weight:UIFontWeightRegular];subtitle.textColor=UIColor.secondaryLabelColor;subtitle.numberOfLines=1;subtitle.hidden=!twoLine;[cell.contentView addSubview:subtitle];
-    return cell;
-}
-void ABMCConfigureActionCell(UITableViewCell *cell, UIImage *image, NSString *title, NSString *subtitle) {
-    cell.accessoryType=UITableViewCellAccessoryNone;UIImageView *icon=[cell.contentView viewWithTag:kABMCActionIconTag];UILabel *main=[cell.contentView viewWithTag:kABMCActionTitleTag];UILabel *detail=[cell.contentView viewWithTag:kABMCActionSubtitleTag];
-    icon.image=NormalizedIcon(image) ?: image;main.text=title ?: @"";cell.textLabel.text=title ?: @"";detail.hidden=!subtitle.length;detail.text=subtitle ?: @"";[cell setNeedsLayout];
-}
-
 NSString *ABMCInferLinkIcon(NSString *URLString) {
     NSString *scheme = [NSURL URLWithString:URLString].scheme.lowercaseString;
     if ([scheme isEqualToString:@"weixin"]) return @"com.tencent.xin";

@@ -161,7 +161,7 @@ void ABMCInstallPresentationLongPress(UITableViewCell *cell, UIViewController *c
     if (!cell || !key.length) return;
     static const void *kTargetKey=&kTargetKey;
     ABMCPresentationLongPressTarget *target=objc_getAssociatedObject(cell,kTargetKey);
-    if(!target){ target=[ABMCPresentationLongPressTarget new]; UIGestureRecognizer *gesture=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(pressed:)]; gesture.minimumPressDuration=0.45; gesture.cancelsTouchesInView=YES; [cell addGestureRecognizer:gesture]; objc_setAssociatedObject(cell,kTargetKey,target,OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+    if(!target){ target=[ABMCPresentationLongPressTarget new]; UILongPressGestureRecognizer *gesture=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(pressed:)]; gesture.minimumPressDuration=0.45; gesture.cancelsTouchesInView=YES; [cell addGestureRecognizer:gesture]; objc_setAssociatedObject(cell,kTargetKey,target,OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
     target.controller=controller; target.key=key; target.title=title; target.icon=icon; target.completion=completion;
 }
 

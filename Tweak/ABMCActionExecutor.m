@@ -15,7 +15,7 @@
 - (void)openSavedLink:(NSString *)linkID;
 - (void)openApp:(NSString *)bundleID;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
-- (void)showActionPanel:(NSArray<NSString *> *)actions;
+- (void)executeActionsInOrder:(NSArray<NSString *> *)actions;
 - (void)runShortcut:(NSString *)name;
 - (void)showControlCenter;
 - (void)showNotificationCenter;
@@ -79,7 +79,7 @@ BOOL ABMCPerformingDefaultAction = NO;
     [self executeAction:action];
     // A native action sheet may contain “系统默认”; retain the real event
     // until the user chooses or cancels it, then release it from the panel.
-    if (![action hasPrefix:@"actionpanel:"] && ![action hasPrefix:@"shortcutpanel:"]) [self clearHardwareContext];
+    if (![action hasPrefix:@"actionpanel:"]) [self clearHardwareContext];
 }
 - (void)clearHardwareContext { self.buttonInstance=nil; self.lastDownEvent=nil; }
 
@@ -134,17 +134,8 @@ BOOL ABMCPerformingDefaultAction = NO;
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
         [self runShortcutIdentifier:parts.firstObject name:(parts.count > 1 ? parts[1] : @"")];
     } else if ([actionID hasPrefix:@"actionpanel:"]) {
-        NSString *panelID=[actionID substringFromIndex:12];
-        CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("actionPanels"),PREFS_DOMAIN);
-        NSArray *actions=raw&&CFGetTypeID(raw)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)raw objectForKey:panelID]:nil;
-        if(raw)CFRelease(raw); [self showActionPanel:actions];
-    } else if ([actionID hasPrefix:@"shortcutpanel:"]) {
-        // Read-only migration for B10/B11 selections; never show the old custom grid.
-        CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("shortcutPanels"),PREFS_DOMAIN);
-        NSArray *items=raw&&CFGetTypeID(raw)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)raw objectForKey:[actionID substringFromIndex:14]]:nil;
-        if(raw)CFRelease(raw); NSMutableArray *actions=[NSMutableArray array];
-        for(NSDictionary *item in items)if([item isKindOfClass:NSDictionary.class]&&[item[@"identifier"] length])[actions addObject:[NSString stringWithFormat:@"shortcutid:%@|%@|%@|%@",item[@"identifier"],item[@"name"]?:@"快捷指令",item[@"glyph"]?:@0,item[@"color"]?:@0]];
-        [self showActionPanel:actions];
+        NSString *panelID=[actionID substringFromIndex:12]; CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("actionPanels"),PREFS_DOMAIN);
+        NSArray *actions=raw&&CFGetTypeID(raw)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)raw objectForKey:panelID]:nil; if(raw)CFRelease(raw); [self executeActionsInOrder:actions];
     } else if ([actionID hasPrefix:@"shortcut:"]) {
         [self runShortcut:[actionID substringFromIndex:9]];
     }
@@ -473,29 +464,14 @@ BOOL ABMCPerformingDefaultAction = NO;
     });
 }
 
-- (NSString *)nativePanelTitleForAction:(NSString *)action {
-    if([action hasPrefix:@"shortcutid:"]){NSArray *p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>1?p[1]:@"快捷指令";}
-    if([action hasPrefix:@"app:"]){NSString *bid=[action substringFromIndex:4];Class c=NSClassFromString(@"LSApplicationWorkspace");SEL d=NSSelectorFromString(@"defaultWorkspace"),f=NSSelectorFromString(@"applicationProxyForIdentifier:");id w=[c respondsToSelector:d]?((id(*)(id,SEL))objc_msgSend)(c,d):nil;id proxy=[w respondsToSelector:f]?((id(*)(id,SEL,id))objc_msgSend)(w,f,bid):nil;SEL n=NSSelectorFromString(@"localizedName");NSString *name=[proxy respondsToSelector:n]?((id(*)(id,SEL))objc_msgSend)(proxy,n):nil;return name.length?name:bid;}
-    if([action hasPrefix:@"url:"])return [action substringFromIndex:4];
-    if([action hasPrefix:@"link:"]){CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("savedLinks"),PREFS_DOMAIN);NSString *title=nil;for(NSDictionary *x in (raw&&CFGetTypeID(raw)==CFArrayGetTypeID()?(__bridge NSArray*)raw:@[]))if([x[@"id"]isEqual:[action substringFromIndex:5]]){title=x[@"title"];break;}if(raw)CFRelease(raw);return title ?: @"URL";}
-    NSDictionary *names=@{ @"default":@"系统默认",@"flashlight":@"手电筒",@"camera":@"相机",@"silent":@"静音切换",@"screenshot":@"截屏",@"lock":@"锁屏",@"controlCenter":@"控制中心",@"notificationCenter":@"通知中心",@"settings":@"打开设置",@"respring":@"重启界面",@"wechatScan":@"微信扫码",@"wechatPay":@"微信付款码",@"alipayScan":@"支付宝扫码",@"alipayPay":@"支付宝付款码"};return names[action] ?: @"动作";
+- (void)executeActionsInOrder:(NSArray<NSString *> *)actions {
+    // No custom panel/UI is kept for combinations. Execute the persisted
+    // selection top-to-bottom. Each execution routine remains asynchronous.
+    NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id action in actions)if([action isKindOfClass:NSString.class]&&[action length]&&![action isEqualToString:@"none"])[unique addObject:action];
+    for(NSString *action in [unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))])[self executeAction:action];
+    [self clearHardwareContext];
 }
-- (UIImage *)nativePanelIconForAction:(NSString *)action {
-    NSString *token=nil;if([action hasPrefix:@"app:"])token=[action substringFromIndex:4];else if([action hasPrefix:@"shortcutid:"])token=@"square.stack.3d.up.fill";else if([action hasPrefix:@"link:"]||[action hasPrefix:@"url:"])token=@"link";else { NSDictionary *icons=@{ @"default":@"gearshape.fill",@"flashlight":@"flashlight.on.fill",@"camera":@"camera.fill",@"silent":@"bell.slash.fill",@"screenshot":@"viewfinder",@"lock":@"lock.fill",@"controlCenter":@"switch.2",@"notificationCenter":@"bell.fill",@"settings":@"gearshape.fill",@"respring":@"arrow.clockwise",@"wechatScan":@"qrcode.viewfinder",@"wechatPay":@"creditcard.fill",@"alipayScan":@"qrcode.viewfinder",@"alipayPay":@"creditcard.fill"};token=icons[action] ?: @"square.grid.2x2.fill";}
-    UIImage *icon=[UIImage systemImageNamed:token];if(!icon&&token.length){@try{icon=[UIImage _applicationIconImageForBundleIdentifier:token format:0 scale:UIScreen.mainScreen.scale];}@catch(NSException *e){}}return icon ?: [UIImage systemImageNamed:@"square.grid.2x2.fill"];
-}
-- (void)showActionPanel:(NSArray<NSString *> *)actions {
-    NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id action in actions)if([action isKindOfClass:NSString.class]&&[action length]&&![action isEqualToString:@"none"])[unique addObject:action];NSArray *limited=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];if(!limited.count)return;if(limited.count==1){[self executeAction:limited.firstObject];return;}
-    dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool { @try {
-        UIWindow *window=nil;for(UIScene *scene in UIApplication.sharedApplication.connectedScenes){if(![scene isKindOfClass:UIWindowScene.class]||scene.activationState!=UISceneActivationStateForegroundActive)continue;for(UIWindow *candidate in ((UIWindowScene *)scene).windows)if(candidate.isKeyWindow){window=candidate;break;}if(window)break;}
-        UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;if(!host)return;
-        UIAlertController *panel=[UIAlertController alertControllerWithTitle:@"选择动作" message:@"请选择要执行的动作" preferredStyle:UIAlertControllerStyleActionSheet];
-        for(NSString *action in limited){[panel addAction:[UIAlertAction actionWithTitle:[self nativePanelTitleForAction:action] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *choice){[self executeAction:action];[self clearHardwareContext];}]];}
-        [panel addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction *choice){[self clearHardwareContext];}]];
-        UIPopoverPresentationController *popover=panel.popoverPresentationController;if(popover){popover.sourceView=host.view;popover.sourceRect=CGRectMake(CGRectGetMidX(host.view.bounds),CGRectGetMaxY(host.view.bounds),1,1);}
-        [host presentViewController:panel animated:YES completion:nil];
-    } @catch(NSException *e){} } });
-}
+
 - (void)runShortcut:(NSString *)name {
     if (!name.length) return;
     NSString *encoded = [name stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];

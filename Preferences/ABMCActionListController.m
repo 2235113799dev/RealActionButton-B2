@@ -42,7 +42,6 @@ static NSString *TitleForAction(NSString *action) {
     if ([action hasPrefix:@"app:"]) return ABMCApplicationName([action substringFromIndex:4]);
     if ([action hasPrefix:@"shortcutid:"]) { NSArray *p = [[action substringFromIndex:11] componentsSeparatedByString:@"|"]; return p.count > 1 ? p[1] : @"快捷指令"; }
     if ([action hasPrefix:@"actionpanel:"]) return @"已选动作组合";
-    if ([action hasPrefix:@"shortcutpanel:"]) return @"快捷指令面板";
     if ([action hasPrefix:@"shortcut:"]) return [action substringFromIndex:9];
     if ([action hasPrefix:@"link:"]) return SavedURLTitle([action substringFromIndex:5]) ?: @"URL（未找到）";
     if ([action hasPrefix:@"url:"]) return [action substringFromIndex:4];
@@ -57,7 +56,7 @@ static NSString *PresentationKeyForAction(NSString *action) {
 static NSString *DisplayedTitleForAction(NSString *action) { return ABMCDisplayTitle(PresentationKeyForAction(action), TitleForAction(action)); }
 static UIImage *IconForAction(NSString *action) {
     const ActionInfo *info = InfoForAction(action);
-    if ([action hasPrefix:@"actionpanel:"] || [action hasPrefix:@"shortcutpanel:"]) return ABMCTintedIcon(@"square.grid.2x2.fill", nil);
+    if ([action hasPrefix:@"actionpanel:"]) return ABMCTintedIcon(@"square.grid.2x2.fill", nil);
     if ([action hasPrefix:@"shortcutid:"]) {
         NSArray *parts=[[action substringFromIndex:11] componentsSeparatedByString:@"|"];
         if(parts.count>3){UIImage *workflow=ABMCWorkflowIconImage([parts[2] integerValue],[parts[3] longLongValue]);if(workflow)return workflow;}
@@ -85,8 +84,8 @@ static UIImage *IconForAction(NSString *action) {
     if (_specifiers) return _specifiers;
     NSMutableArray *items=[NSMutableArray array];
     [items addObject:[PSSpecifier groupSpecifierWithName:@"已选动作"]];
-    PSSpecifier *selected=[PSSpecifier preferenceSpecifierNamed:DisplayedTitleForAction(_current) target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
-    [selected setProperty:@YES forKey:@"selectedAction"]; [items addObject:selected];
+    NSArray *selectedActions=ABMCSelectedActions(_key); if(!selectedActions.count) selectedActions=@[@"none"];
+    for(NSString *action in selectedActions){ PSSpecifier *selected=[PSSpecifier preferenceSpecifierNamed:DisplayedTitleForAction(action) target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil]; [selected setProperty:@YES forKey:@"selectedAction"]; [selected setProperty:action forKey:@"actionID"]; [items addObject:selected]; }
     [items addObject:[PSSpecifier groupSpecifierWithName:@"动作测试"]];
     PSSpecifier *test=[PSSpecifier preferenceSpecifierNamed:@"开始测试" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     [test setProperty:@"play.fill" forKey:@"iconToken"]; test->action=@selector(test:); [items addObject:test];
@@ -98,7 +97,7 @@ static UIImage *IconForAction(NSString *action) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell=[super tableView:tableView cellForRowAtIndexPath:indexPath]; PSSpecifier *s=[self specifierAtIndexPath:indexPath];
     cell.accessoryView=nil; cell.imageView.hidden=NO; cell.imageView.image=nil; cell.textLabel.textColor=UIColor.labelColor; cell.textLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];
-    if ([s propertyForKey:@"selectedAction"]) { ABMCApplyLargeIcon(cell, IconForAction(_current)); cell.textLabel.textColor=[_current isEqualToString:@"none"] ? UIColor.systemRedColor : UIColor.systemBlueColor; ABMCInstallPresentationLongPress(cell,self,PresentationKeyForAction(_current),DisplayedTitleForAction(_current),@"hand.tap.fill",^{self->_specifiers=nil;[self reloadSpecifiers];}); if(!objc_getAssociatedObject(cell,@selector(doubleTapSelected:))){UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(doubleTapSelected:)];tap.numberOfTapsRequired=2;tap.cancelsTouchesInView=YES;tap.delaysTouchesEnded=YES;[cell.contentView addGestureRecognizer:tap];objc_setAssociatedObject(cell,@selector(doubleTapSelected:),tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);} }
+    if ([s propertyForKey:@"selectedAction"]) { NSString *action=[s propertyForKey:@"actionID"] ?: @"none"; ABMCApplyLargeIcon(cell, IconForAction(action)); cell.textLabel.textColor=[action isEqualToString:@"none"] ? UIColor.systemRedColor : UIColor.systemBlueColor; ABMCInstallPresentationLongPress(cell,self,PresentationKeyForAction(action),DisplayedTitleForAction(action),@"hand.tap.fill",^{self->_specifiers=nil;[self reloadSpecifiers];}); if(!objc_getAssociatedObject(cell,@selector(doubleTapSelected:))){UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(doubleTapSelected:)];tap.numberOfTapsRequired=2;tap.cancelsTouchesInView=YES;tap.delaysTouchesEnded=YES;[cell.contentView addGestureRecognizer:tap];objc_setAssociatedObject(cell,@selector(doubleTapSelected:),tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);} }
     else if ([[s propertyForKey:@"iconToken"] length]) { ABMCApplyLargeIcon(cell, ABMCTintedIcon([s propertyForKey:@"iconToken"], nil)); }
     else { NSString *key=[s propertyForKey:@"presentationKey"],*fallback=[s propertyForKey:@"defaultIcon"]; if (fallback.length) { NSString *token=ABMCDisplayIconToken(key,fallback); ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(@"square.grid.2x2.fill",nil)); ABMCInstallPresentationLongPress(cell,self,key,ABMCDisplayTitle(key,[s name]),token,^{self->_specifiers=nil;[self reloadSpecifiers];}); } }
     return cell;

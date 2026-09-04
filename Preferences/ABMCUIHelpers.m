@@ -175,39 +175,47 @@ static NSString *ABMCCategoryActionTitle(NSString *action) { if([action hasPrefi
 - (void)longPress:(UILongPressGestureRecognizer *)gesture { if(gesture.state!=UIGestureRecognizerStateBegan)return;NSString *key=ABMCCategoryPresentationKey(self.action);ABMCShowPresentationEditor(self.controller,key,ABMCCategoryActionTitle(self.action),@"hand.tap.fill",^{[self refresh];}); }
 - (void)doubleTap:(UITapGestureRecognizer *)gesture { if(gesture.state!=UIGestureRecognizerStateRecognized)return;NSMutableArray *items=[ABMCSelectedActions(self.key)mutableCopy];[items removeObject:self.action];ABMCStoreSelectedActions(self.key,items);[self refresh]; }
 @end
+@interface ABMCAlignedSearchBar : UISearchBar @end
+@implementation ABMCAlignedSearchBar
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    UISearchTextField *field=self.searchTextField;UIView *container=field.superview;
+    if(container){container.frame=self.bounds;field.frame=container.bounds;field.layer.cornerRadius=15.0;field.clipsToBounds=YES;}
+}
+@end
 UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *controller, NSString *placeholder) {
     UITableView *table=[controller isKindOfClass:UITableViewController.class]?((UITableViewController *)controller).tableView:nil;CGFloat width=table.bounds.size.width;if(width<100)width=UIScreen.mainScreen.bounds.size.width;
-    NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=44.0,captionY=62.0,cardY=86.0,height=cardY+count*row+12.0;
-    UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];header.autoresizingMask=UIViewAutoresizingFlexibleWidth;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
-    // UITableView's fixed overlay uses full-width coordinates. Keep the same
-    // 20pt grouped margin as the native cards below for search and selection.
-    const CGFloat inset=20.0,searchOuterInset=12.0;
-    // UISearchBar adds an 8pt internal field margin. A 12pt outer frame makes
-    // the visible rounded search field align exactly with 20pt grouped cards.
-    UISearchBar *search=[[UISearchBar alloc]initWithFrame:CGRectMake(searchOuterInset,0,width-searchOuterInset*2,56)];search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.placeholder=placeholder;search.delegate=(id<UISearchBarDelegate>)controller;[header addSubview:search];
-    UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(inset,captionY,width-inset*2,18)];caption.autoresizingMask=UIViewAutoresizingFlexibleWidth;caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[header addSubview:caption];
-    CGFloat cardWidth=width-inset*2;UIView *card=[[UIView alloc]initWithFrame:CGRectMake(inset,cardY,cardWidth,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=15;card.clipsToBounds=YES;[header addSubview:card];
+    NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=44.0,captionY=60.0,cardY=84.0,height=cardY+count*row+12.0;
+    UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];header.autoresizingMask=UIViewAutoresizingFlexibleWidth;header.backgroundColor=UIColor.clearColor;
+    UIVisualEffectView *glass=[[UIVisualEffectView alloc]initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial]];glass.frame=header.bounds;glass.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;glass.userInteractionEnabled=NO;[header addSubview:glass];
+    const CGFloat inset=20.0;
+    ABMCAlignedSearchBar *search=[[ABMCAlignedSearchBar alloc]initWithFrame:CGRectMake(inset,8,width-inset*2,44)];search.tag=736451;search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.searchBarStyle=UISearchBarStyleMinimal;search.backgroundImage=[UIImage new];search.placeholder=placeholder;search.delegate=(id<UISearchBarDelegate>)controller;search.searchTextField.backgroundColor=[UIColor.secondarySystemGroupedBackgroundColor colorWithAlphaComponent:.62];[header addSubview:search];
+    UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(inset,captionY,width-inset*2,20)];caption.autoresizingMask=UIViewAutoresizingFlexibleWidth;caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[header addSubview:caption];
+    CGFloat cardWidth=width-inset*2;UIView *card=[[UIView alloc]initWithFrame:CGRectMake(inset,cardY,cardWidth,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=[UIColor.secondarySystemGroupedBackgroundColor colorWithAlphaComponent:.62];card.layer.cornerRadius=15;card.clipsToBounds=YES;[header addSubview:card];
     for(NSUInteger i=0;i<count;i++){NSString *action=items.count?items[i]:@"none";BOOL none=[action isEqualToString:@"none"];UIView *line=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,cardWidth,row)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.userInteractionEnabled=YES;[card addSubview:line];UIImage *raw=none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action);UIImageView *icon=[[UIImageView alloc]initWithImage:NormalizedIcon(raw) ?: raw];icon.frame=CGRectMake(20,5,34,34);icon.contentMode=UIViewContentModeScaleAspectFit;[line addSubview:icon];UILabel *title=[[UILabel alloc]initWithFrame:CGRectMake(64,0,cardWidth-74,row)];title.autoresizingMask=UIViewAutoresizingFlexibleWidth;title.text=none?@"无操作":ABMCCategoryActionTitle(action);title.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;title.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];[line addSubview:title];ABMCCategorySelectedTarget *target=[ABMCCategorySelectedTarget new];target.controller=controller;target.key=preferenceKey;target.action=action;UILongPressGestureRecognizer *hold=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];hold.minimumPressDuration=.45;[line addGestureRecognizer:hold];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[line addGestureRecognizer:doubleTap];objc_setAssociatedObject(line,@selector(ABMCCategoryActionHeader),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<count){UIView *separator=[[UIView alloc]initWithFrame:CGRectMake(64,row-.5,cardWidth-64,.5)];separator.autoresizingMask=UIViewAutoresizingFlexibleWidth;separator.backgroundColor=UIColor.separatorColor;[line addSubview:separator];}}
     return header;
 }
-// Keep search and selected actions inside UITableView's native header.  A
-// sibling “sticky” overlay competes with Preferences' navigation transition
-// containers, causing both clipping under the bar and a visible rebuild flash.
+// The overlay belongs to UITableView itself and is constrained to its visible
+// safe area rather than content coordinates. It stays immediately below the
+// navigation bar while rows scroll underneath, without cross-hierarchy frame
+// conversion or a viewDidAppear rebuild.
 static const void *kABMCStickyHeaderKey=&kABMCStickyHeaderKey;
+static const void *kABMCStickySpacerKey=&kABMCStickySpacerKey;
 void ABMCInstallStickyCategoryActionHeader(UITableViewController *controller, NSString *preferenceKey, NSString *placeholder) {
     if(!controller)return;
-    UITableView *table=controller.tableView;UIView *header=ABMCCategoryActionHeader(preferenceKey,controller,placeholder);
-    CGFloat width=CGRectGetWidth(table.bounds);if(width<100)width=UIScreen.mainScreen.bounds.size.width;
-    header.frame=CGRectMake(0,0,width,CGRectGetHeight(header.bounds));
-    table.tableHeaderView=header;
-    objc_setAssociatedObject(controller,kABMCStickyHeaderKey,header,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    UITableView *table=controller.tableView;UIView *old=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);UISearchBar *oldSearch=(UISearchBar *)[old viewWithTag:736451];NSString *text=[oldSearch.text copy];BOOL focused=oldSearch.isFirstResponder;[old removeFromSuperview];
+    UIView *header=ABMCCategoryActionHeader(preferenceKey,controller,placeholder);UISearchBar *search=(UISearchBar *)[header viewWithTag:736451];if(text.length)search.text=text;
+    CGFloat height=CGRectGetHeight(header.bounds);UIView *spacer=[[UIView alloc]initWithFrame:CGRectMake(0,0,CGRectGetWidth(table.bounds),height)];spacer.backgroundColor=UIColor.clearColor;spacer.userInteractionEnabled=NO;table.tableHeaderView=spacer;
+    header.translatesAutoresizingMaskIntoConstraints=NO;header.layer.zPosition=10;[table addSubview:header];
+    NSLayoutConstraint *top=[header.topAnchor constraintEqualToAnchor:table.safeAreaLayoutGuide.topAnchor];
+    [NSLayoutConstraint activateConstraints:@[top,[header.leadingAnchor constraintEqualToAnchor:table.frameLayoutGuide.leadingAnchor],[header.trailingAnchor constraintEqualToAnchor:table.frameLayoutGuide.trailingAnchor],[header.heightAnchor constraintEqualToConstant:height]]];
+    objc_setAssociatedObject(controller,kABMCStickyHeaderKey,header,OBJC_ASSOCIATION_RETAIN_NONATOMIC);objc_setAssociatedObject(controller,kABMCStickySpacerKey,spacer,OBJC_ASSOCIATION_RETAIN_NONATOMIC);[table bringSubviewToFront:header];if(focused)dispatch_async(dispatch_get_main_queue(),^{[search becomeFirstResponder];});
 }
 void ABMCUpdateStickyCategoryActionHeader(UITableViewController *controller) {
-    UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);UITableView *table=controller.tableView;if(!header||!table)return;
-    CGFloat width=CGRectGetWidth(table.bounds);if(fabs(CGRectGetWidth(header.bounds)-width)<0.5)return;
-    header.frame=CGRectMake(0,0,width,CGRectGetHeight(header.bounds));table.tableHeaderView=header;
+    UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);UIView *spacer=objc_getAssociatedObject(controller,kABMCStickySpacerKey);UITableView *table=controller.tableView;if(!header||!table)return;
+    if(spacer&&fabs(CGRectGetWidth(spacer.bounds)-CGRectGetWidth(table.bounds))>.5){spacer.frame=CGRectMake(0,0,CGRectGetWidth(table.bounds),CGRectGetHeight(spacer.bounds));table.tableHeaderView=spacer;}[table bringSubviewToFront:header];
 }
-void ABMCRemoveStickyCategoryActionHeader(UITableViewController *controller) { UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);if(controller.tableView.tableHeaderView==header)controller.tableView.tableHeaderView=nil;objc_setAssociatedObject(controller,kABMCStickyHeaderKey,nil,OBJC_ASSOCIATION_ASSIGN); }
+void ABMCRemoveStickyCategoryActionHeader(UITableViewController *controller) { UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);UIView *spacer=objc_getAssociatedObject(controller,kABMCStickySpacerKey);[header removeFromSuperview];if(controller.tableView.tableHeaderView==spacer)controller.tableView.tableHeaderView=nil;objc_setAssociatedObject(controller,kABMCStickyHeaderKey,nil,OBJC_ASSOCIATION_ASSIGN);objc_setAssociatedObject(controller,kABMCStickySpacerKey,nil,OBJC_ASSOCIATION_ASSIGN); }
 static NSMutableDictionary *ABMCActionPanels(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("actionPanels"),ABMCDomain); NSMutableDictionary *r=v&&CFGetTypeID(v)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)v mutableCopy]:[NSMutableDictionary dictionary]; if(v)CFRelease(v); return r; }
 NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey) {
     if(!preferenceKey.length)return @[]; CFStringRef raw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)preferenceKey,ABMCDomain); NSString *value=raw?(__bridge_transfer NSString *)raw:nil;

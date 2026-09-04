@@ -39,9 +39,14 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
         longPressActive = NO;
         longPressUsesNativeAction = NO;
         if (shouldPerformNativeButtonUp) %orig;
+        [[ABMCActionExecutor sharedExecutor] clearHardwareContext];
         return;
     }
 
+    // If native long press is enabled, SpringBoard received the real down
+    // event. It must also receive this short-release to dismiss its assertion
+    // / Dynamic Island state; below-long-press releases do not run its action.
+    if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) %orig;
     [[ABMCClickManager sharedManager] registerClick];
 }
 
@@ -82,9 +87,14 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
         longPressActive = NO;
         longPressUsesNativeAction = NO;
         if (shouldPerformNativeButtonUp) %orig;
+        [[ABMCActionExecutor sharedExecutor] clearHardwareContext];
         return;
     }
 
+    // If native long press is enabled, SpringBoard received the real down
+    // event. It must also receive this short-release to dismiss its assertion
+    // / Dynamic Island state; below-long-press releases do not run its action.
+    if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) %orig;
     [[ABMCClickManager sharedManager] registerClick];
 }
 

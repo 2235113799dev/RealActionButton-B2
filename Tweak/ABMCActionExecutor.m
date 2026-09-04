@@ -77,7 +77,11 @@ BOOL ABMCPerformingDefaultAction = NO;
 - (void)executeActionForClickType:(NSInteger)clickType {
     NSString *action = [self actionForClickCount:clickType];
     [self executeAction:action];
+    // A native action sheet may contain “系统默认”; retain the real event
+    // until the user chooses or cancels it, then release it from the panel.
+    if (![action hasPrefix:@"actionpanel:"] && ![action hasPrefix:@"shortcutpanel:"]) [self clearHardwareContext];
 }
+- (void)clearHardwareContext { self.buttonInstance=nil; self.lastDownEvent=nil; }
 
 - (BOOL)usesNativeLongPressAction { @synchronized(self) { return !_longPressAction || [_longPressAction isEqualToString:@"default"]; } }
 - (BOOL)executeConfiguredLongPressAction {
@@ -486,8 +490,8 @@ BOOL ABMCPerformingDefaultAction = NO;
         UIWindow *window=nil;for(UIScene *scene in UIApplication.sharedApplication.connectedScenes){if(![scene isKindOfClass:UIWindowScene.class]||scene.activationState!=UISceneActivationStateForegroundActive)continue;for(UIWindow *candidate in ((UIWindowScene *)scene).windows)if(candidate.isKeyWindow){window=candidate;break;}if(window)break;}
         UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;if(!host)return;
         UIAlertController *panel=[UIAlertController alertControllerWithTitle:@"选择动作" message:@"请选择要执行的动作" preferredStyle:UIAlertControllerStyleActionSheet];
-        for(NSString *action in limited){[panel addAction:[UIAlertAction actionWithTitle:[self nativePanelTitleForAction:action] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *choice){[self executeAction:action];}]];}
-        [panel addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+        for(NSString *action in limited){[panel addAction:[UIAlertAction actionWithTitle:[self nativePanelTitleForAction:action] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *choice){[self executeAction:action];[self clearHardwareContext];}]];}
+        [panel addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction *choice){[self clearHardwareContext];}]];
         UIPopoverPresentationController *popover=panel.popoverPresentationController;if(popover){popover.sourceView=host.view;popover.sourceRect=CGRectMake(CGRectGetMidX(host.view.bounds),CGRectGetMaxY(host.view.bounds),1,1);}
         [host presentViewController:panel animated:YES completion:nil];
     } @catch(NSException *e){} } });

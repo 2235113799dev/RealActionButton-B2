@@ -13,5 +13,6 @@ extern BOOL ABMCPerformingDefaultAction;
 - (BOOL)usesNativeLongPressAction;
 - (void)executeAction:(NSString *)actionID;
 - (void)reloadPreferences;
+- (void)clearHardwareContext;
 
 @end

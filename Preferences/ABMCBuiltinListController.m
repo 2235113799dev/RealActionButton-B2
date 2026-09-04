@@ -5,7 +5,7 @@ static const ABMCBuiltinAction kActions[]={ {@"default",@"系统默认",@"gearsh
 @interface ABMCBuiltinListController ()<UISearchBarDelegate>@end
 @implementation ABMCBuiltinListController { NSString *_key,*_query; }
 - (instancetype)initWithPreferenceKey:(NSString *)key { if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_key=[key copy];self.title=@"基础动作";}return self; }
-- (void)viewDidLoad {[super viewDidLoad];_query=@"";[self refreshHeader];self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(clearAll)];}
+- (void)viewDidLoad {[super viewDidLoad];_query=@"";self.tableView.rowHeight=44.0;self.tableView.estimatedRowHeight=44.0;[self refreshHeader];self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(clearAll)];}
 - (void)clearAll { ABMCStoreSelectedActions(_key,@[]);[self refreshHeader];[self.tableView reloadData]; }
 - (NSInteger)raw:(NSInteger)row {NSInteger n=0;for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++)if(!_query.length||[kActions[i].title localizedCaseInsensitiveContainsString:_query])if(n++==row)return i;return NSNotFound;}
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{NSInteger n=0;for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++)if(!_query.length||[kActions[i].title localizedCaseInsensitiveContainsString:_query])n++;return n;}

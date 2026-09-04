@@ -3,7 +3,7 @@
 @interface ABMCApplicationListController ()<UISearchBarDelegate>@end
 @implementation ABMCApplicationListController { NSString *_key,*_query;NSArray *_apps; }
 - (instancetype)initWithPreferenceKey:(NSString *)key{if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_key=[key copy];self.title=@"应用列表";}return self;}
-- (void)viewDidLoad{[super viewDidLoad];_query=@"";[self refreshHeader];self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(clearAll)];dispatch_async(dispatch_get_main_queue(), ^{ [self reloadApps]; });}
+- (void)viewDidLoad{[super viewDidLoad];_query=@"";self.tableView.rowHeight=44.0;self.tableView.estimatedRowHeight=44.0;[self refreshHeader];self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(clearAll)];dispatch_async(dispatch_get_main_queue(), ^{ [self reloadApps]; });}
 - (void)clearAll{ABMCStoreSelectedActions(_key,@[]);[self refreshHeader];[self.tableView reloadData];}
 - (void)reloadApps {
     // LaunchServices proxies are not thread-safe on all iOS 17 builds. Use

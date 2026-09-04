@@ -34,7 +34,6 @@ void ABMCInstallPresentationLongPress(UITableViewCell *cell, UIViewController *c
 /// Shared 1–8 action selection, persisted independently of each category UI.
 NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey);
 void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *actions);
-UIView *ABMCSelectedActionsBanner(NSString *preferenceKey, UIViewController *controller);
 CGFloat ABMCUnifiedIconSize(void);
 UIColor *ABMCUnifiedIconColor(void);
 NSString *ABMCUnifiedIconColorHex(void);

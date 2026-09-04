@@ -132,40 +132,7 @@ void ABMCShowPresentationEditor(UIViewController *controller, NSString *key, NSS
     [controller presentViewController:alert animated:YES completion:nil];
 }
 static void ABMCNotifyChanged(void) { CFPreferencesAppSynchronize(ABMCDomain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged"),NULL,NULL,YES); }
-static NSMutableDictionary *ABMCActionPanels(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("actionPanels"),ABMCDomain); NSMutableDictionary *r=v&&CFGetTypeID(v)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)v mutableCopy]:[NSMutableDictionary dictionary]; if(v)CFRelease(v); return r; }
-NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey) {
-    if(!preferenceKey.length)return @[]; CFStringRef raw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)preferenceKey,ABMCDomain); NSString *value=raw?(__bridge_transfer NSString *)raw:nil;
-    if([value hasPrefix:@"actionpanel:"]){ NSArray *items=ABMCActionPanels()[[value substringFromIndex:12]]; NSMutableArray *out=[NSMutableArray array]; for(id item in items)if([item isKindOfClass:NSString.class]&&[item length])[out addObject:item]; return out; }
-
-    return value.length&&! [value isEqualToString:@"none"] ? @[value] : @[];
-}
-void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *actions) {
-    if(!preferenceKey.length)return; NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id item in actions)if([item isKindOfClass:NSString.class]&&[item length])[unique addObject:item];NSArray *values=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];
-    CFStringRef oldRaw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)preferenceKey,ABMCDomain);NSString *old=oldRaw?(__bridge_transfer NSString *)oldRaw:nil;NSMutableDictionary *panels=ABMCActionPanels();if([old hasPrefix:@"actionpanel:"])[panels removeObjectForKey:[old substringFromIndex:12]];
-    if(!values.count){CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,CFSTR("none"),ABMCDomain);}else if(values.count==1){CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,(__bridge CFPropertyListRef)values.firstObject,ABMCDomain);}else{NSString *panelID=NSUUID.UUID.UUIDString;panels[panelID]=values;CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,(__bridge CFPropertyListRef)[@"actionpanel:" stringByAppendingString:panelID],ABMCDomain);}
-    CFPreferencesSetAppValue(CFSTR("actionPanels"),(__bridge CFPropertyListRef)panels,ABMCDomain);ABMCNotifyChanged();
-}
-
-static NSString *ABMCBriefActionTitle(NSString *action) {
-    if([action hasPrefix:@"shortcutfolder:"])return ABMCShortcutFolderTitle(action);
-    if([action hasPrefix:@"shortcutid:"]){NSArray *p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>1?p[1]:@"快捷指令";}
-    if([action hasPrefix:@"app:"])return ABMCApplicationName([action substringFromIndex:4]) ?: @"应用";
-    if([action hasPrefix:@"link:"]){CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("savedLinks"),ABMCDomain);NSString *title=nil;for(NSDictionary*x in (v&&CFGetTypeID(v)==CFArrayGetTypeID()?(__bridge NSArray*)v:@[]))if([x[@"id"]isEqual:[action substringFromIndex:5]]){title=x[@"title"];break;}if(v)CFRelease(v);return title ?: @"URL";}
-    if([action hasPrefix:@"url:"])return [action substringFromIndex:4];
-    NSDictionary *n=@{ @"default":@"系统默认",@"flashlight":@"手电筒",@"camera":@"相机",@"silent":@"静音切换",@"screenshot":@"截屏",@"lock":@"锁屏",@"controlCenter":@"控制中心",@"notificationCenter":@"通知中心",@"settings":@"设置",@"respring":@"重启",@"wechatScan":@"微信扫码",@"wechatPay":@"微信付款码",@"alipayScan":@"支付宝扫码",@"alipayPay":@"支付宝付款码"};return n[action] ?: @"动作";
-}
 static NSDictionary *ABMCLinkRecord(NSString *identifier);
-// Fixed geometry for every selected-action banner. UITableView headers are
-// full-width, so these are the same visual insets used by InsetGrouped rows.
-static const CGFloat kABMCSelectedCardInset = 20.0;
-// Exact visual metrics of the root action page's PSButtonCell icon column.
-// Keep a 34pt canvas; the drawable uses the same global NormalizedIcon()
-// result as ABMCApplyLargeIcon, so headers and root rows cannot drift.
-static const CGFloat kABMCPrimaryIconCanvas = 34.0;
-static const CGFloat kABMCPrimaryIconCanvasX = 20.0;
-static const CGFloat kABMCPrimaryTitleX = 64.0;
-static const CGFloat kABMCPrimaryRowHeight = 44.0;
-static const CGFloat kABMCPrimaryTextSize = 18.0;
 static NSString *ABMCBriefPresentationKey(NSString *action) {
     if([action hasPrefix:@"app:"]) return [@"app." stringByAppendingString:[action substringFromIndex:4]];
     if([action hasPrefix:@"shortcutid:"]) return [@"shortcut." stringByAppendingString:[[action substringFromIndex:11] componentsSeparatedByString:@"|"].firstObject ?: @""];
@@ -190,24 +157,19 @@ UIImage *ABMCSelectedActionIcon(NSString *action) {
     return ABMCIconImageForBundleID(fallback) ?: ABMCTintedIcon(fallback,nil);
 }
 
-@interface ABMCSelectedRowTarget : NSObject
-@property(nonatomic,weak) UIViewController *controller; @property(nonatomic,copy) NSString *preferenceKey,*action;
-- (void)longPress:(UILongPressGestureRecognizer *)gesture; - (void)doubleTap:(UITapGestureRecognizer *)gesture;
-@end
-@implementation ABMCSelectedRowTarget
-- (void)refresh { if([self.controller respondsToSelector:NSSelectorFromString(@"refreshHeader")]) ((void(*)(id,SEL))objc_msgSend)(self.controller,NSSelectorFromString(@"refreshHeader")); if([self.controller isKindOfClass:UITableViewController.class]) [((UITableViewController *)self.controller).tableView reloadData]; else if([self.controller respondsToSelector:@selector(reloadSpecifiers)]) ((void(*)(id,SEL))objc_msgSend)(self.controller,@selector(reloadSpecifiers)); }
-- (void)longPress:(UILongPressGestureRecognizer *)gesture { if(gesture.state!=UIGestureRecognizerStateBegan)return; NSString *action=self.action ?: @"none"; NSString *key=[action hasPrefix:@"app:"]?[@"app." stringByAppendingString:[action substringFromIndex:4]]:([action hasPrefix:@"shortcutid:"]?[@"shortcut." stringByAppendingString:[[action substringFromIndex:11] componentsSeparatedByString:@"|"].firstObject ?: @""] : ([action hasPrefix:@"link:"]?[@"link." stringByAppendingString:[action substringFromIndex:5]]:[@"action." stringByAppendingString:action])); ABMCShowPresentationEditor(self.controller,key,ABMCBriefActionTitle(action),@"hand.tap.fill",^{[self refresh];}); }
-- (void)doubleTap:(UITapGestureRecognizer *)gesture { if(gesture.state==UIGestureRecognizerStateRecognized){NSMutableArray *items=[ABMCSelectedActions(self.preferenceKey) mutableCopy];[items removeObject:self.action];ABMCStoreSelectedActions(self.preferenceKey,items);[self refresh];} }
-@end
-static NSDictionary *ABMCLinkRecord(NSString *identifier) { CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("savedLinks"),ABMCDomain);NSDictionary *result=nil;for(NSDictionary *item in (raw&&CFGetTypeID(raw)==CFArrayGetTypeID()?(__bridge NSArray *)raw:@[]))if([item[@"id"] isEqualToString:identifier]){result=[item copy];break;}if(raw)CFRelease(raw);return result; }
-UIView *ABMCSelectedActionsBanner(NSString *preferenceKey, UIViewController *controller) {
-    NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=kABMCPrimaryRowHeight,top=26,height=top+count*row+12;
-    UITableView *table=[controller isKindOfClass:UITableViewController.class]?((UITableViewController *)controller).tableView:nil;CGFloat width=table.bounds.size.width;if(width<100)width=controller.view.bounds.size.width;if(width<100)width=UIScreen.mainScreen.bounds.size.width;
-    UIView *box=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];box.autoresizingMask=UIViewAutoresizingFlexibleWidth;
-    UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(kABMCSelectedCardInset,2,240,20)];caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[box addSubview:caption];
-    UIView *card=[[UIView alloc]initWithFrame:CGRectMake(kABMCSelectedCardInset,top,box.bounds.size.width-kABMCSelectedCardInset*2,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=15;[box addSubview:card];
-    NSArray *rows=items.count?items:@[@"none"];for(NSUInteger i=0;i<rows.count;i++){NSString *action=rows[i];BOOL none=[action isEqualToString:@"none"];UIView *rowView=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,card.bounds.size.width,row)];rowView.autoresizingMask=UIViewAutoresizingFlexibleWidth;rowView.userInteractionEnabled=YES;[card addSubview:rowView];UIImage *rawIcon=none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action);UIImage *cellIcon=NormalizedIcon(rawIcon) ?: rawIcon;UIImageView *image=[[UIImageView alloc]initWithImage:cellIcon];image.frame=CGRectMake(kABMCPrimaryIconCanvasX,(row-kABMCPrimaryIconCanvas)*.5,kABMCPrimaryIconCanvas,kABMCPrimaryIconCanvas);image.contentMode=UIViewContentModeScaleAspectFit;[rowView addSubview:image];UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(kABMCPrimaryTitleX,0,rowView.bounds.size.width-kABMCPrimaryTitleX-10,row)];label.autoresizingMask=UIViewAutoresizingFlexibleWidth;label.text=none?@"无操作":ABMCBriefActionTitle(action);label.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;label.font=[UIFont systemFontOfSize:kABMCPrimaryTextSize weight:UIFontWeightRegular];[rowView addSubview:label];ABMCSelectedRowTarget *target=[ABMCSelectedRowTarget new];target.controller=controller;target.preferenceKey=preferenceKey;target.action=action;UILongPressGestureRecognizer *longPress=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];longPress.minimumPressDuration=.45;[rowView addGestureRecognizer:longPress];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[rowView addGestureRecognizer:doubleTap];objc_setAssociatedObject(rowView,@selector(ABMCSelectedActionsBanner),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<rows.count){UIView *line=[[UIView alloc]initWithFrame:CGRectMake(kABMCPrimaryTitleX,row-0.5,rowView.bounds.size.width-kABMCPrimaryTitleX,.5)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.backgroundColor=UIColor.separatorColor;[rowView addSubview:line];}}
-    return box;
+
+static NSMutableDictionary *ABMCActionPanels(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("actionPanels"),ABMCDomain); NSMutableDictionary *r=v&&CFGetTypeID(v)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)v mutableCopy]:[NSMutableDictionary dictionary]; if(v)CFRelease(v); return r; }
+NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey) {
+    if(!preferenceKey.length)return @[]; CFStringRef raw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)preferenceKey,ABMCDomain); NSString *value=raw?(__bridge_transfer NSString *)raw:nil;
+    if([value hasPrefix:@"actionpanel:"]){ NSArray *items=ABMCActionPanels()[[value substringFromIndex:12]]; NSMutableArray *out=[NSMutableArray array]; for(id item in items)if([item isKindOfClass:NSString.class]&&[item length])[out addObject:item]; return out; }
+
+    return value.length&&! [value isEqualToString:@"none"] ? @[value] : @[];
+}
+void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *actions) {
+    if(!preferenceKey.length)return; NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id item in actions)if([item isKindOfClass:NSString.class]&&[item length])[unique addObject:item];NSArray *values=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];
+    CFStringRef oldRaw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)preferenceKey,ABMCDomain);NSString *old=oldRaw?(__bridge_transfer NSString *)oldRaw:nil;NSMutableDictionary *panels=ABMCActionPanels();if([old hasPrefix:@"actionpanel:"])[panels removeObjectForKey:[old substringFromIndex:12]];
+    if(!values.count){CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,CFSTR("none"),ABMCDomain);}else if(values.count==1){CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,(__bridge CFPropertyListRef)values.firstObject,ABMCDomain);}else{NSString *panelID=NSUUID.UUID.UUIDString;panels[panelID]=values;CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,(__bridge CFPropertyListRef)[@"actionpanel:" stringByAppendingString:panelID],ABMCDomain);}
+    CFPreferencesSetAppValue(CFSTR("actionPanels"),(__bridge CFPropertyListRef)panels,ABMCDomain);ABMCNotifyChanged();
 }
 
 @interface ABMCPresentationLongPressTarget : NSObject

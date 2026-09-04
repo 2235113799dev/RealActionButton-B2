@@ -3,8 +3,8 @@
 @interface ABMCApplicationListController ()<UISearchBarDelegate>@end
 @implementation ABMCApplicationListController { NSString *_key,*_query;NSArray *_apps; }
 - (instancetype)initWithPreferenceKey:(NSString *)key{if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_key=[key copy];self.title=@"应用列表";}return self;}
-- (void)viewDidLoad{[super viewDidLoad];_query=@"";self.tableView.rowHeight=44.0;self.tableView.estimatedRowHeight=44.0;[self refreshHeader];self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(clearAll)];dispatch_async(dispatch_get_main_queue(), ^{ [self reloadApps]; });}
-- (void)clearAll{ABMCStoreSelectedActions(_key,@[]);[self refreshHeader];[self.tableView reloadData];}
+- (void)viewDidLoad{[super viewDidLoad];_query=@"";self.tableView.rowHeight=44.0;self.tableView.estimatedRowHeight=44.0;[self installSearchHeader];dispatch_async(dispatch_get_main_queue(), ^{ [self reloadApps]; });}
+
 - (void)reloadApps {
     // LaunchServices proxies are not thread-safe on all iOS 17 builds. Use
     // the cached main-thread snapshot; the controller itself was already shown.
@@ -16,7 +16,11 @@
 - (NSArray *)visible{return!_query.length?_apps:[_apps filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary*x,NSDictionary*b){return[x[@"name"] localizedCaseInsensitiveContainsString:_query]||[x[@"id"] localizedCaseInsensitiveContainsString:_query];}]];}
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return self.visible.count;}
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)p{NSDictionary*x=self.visible[p.row];UITableViewCell*c=[t dequeueReusableCellWithIdentifier:@"app"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"app"];NSString*k=[@"app." stringByAppendingString:x[@"id"]],*token=ABMCDisplayIconToken(k,x[@"id"]);ABMCApplyLargeIcon(c,ABMCTintedIcon(token,nil)?:ABMCIconImageForBundleID(token)?:ABMCIconImageForBundleID(x[@"id"]));c.textLabel.font=[UIFont systemFontOfSize:18];c.textLabel.text=ABMCDisplayTitle(k,x[@"name"]);NSString*a=[@"app:" stringByAppendingString:x[@"id"]];c.accessoryType=[ABMCSelectedActions(_key)containsObject:a]?UITableViewCellAccessoryCheckmark:0;ABMCInstallPresentationLongPress(c,self,k,c.textLabel.text,token,^{[self.tableView reloadData];});return c;}
-- (void)refreshHeader{UIView*h=ABMCSelectedActionsBanner(_key,self);CGFloat bannerHeight=h.bounds.size.height;for(UIView*subview in h.subviews){CGRect frame=subview.frame;frame.origin.y+=60;subview.frame=frame;}UISearchBar*search=[[UISearchBar alloc]initWithFrame:CGRectMake(8,0,h.bounds.size.width-16,56)];search.placeholder=@"搜索应用";search.delegate=self;search.autoresizingMask=UIViewAutoresizingFlexibleWidth;CGRect frame=h.frame;frame.size.height=bannerHeight+60;h.frame=frame;[h addSubview:search];self.tableView.tableHeaderView=h;dispatch_async(dispatch_get_main_queue(),^{CGFloat w=self.tableView.bounds.size.width;if(w>100&&h.bounds.size.width!=w){CGRect f=h.frame;f.size.width=w;h.frame=f;self.tableView.tableHeaderView=h;}});}
+- (void)installSearchHeader {
+    CGFloat width=self.tableView.bounds.size.width;if(width<100)width=UIScreen.mainScreen.bounds.size.width;
+    UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,60)];header.autoresizingMask=UIViewAutoresizingFlexibleWidth;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
+    UISearchBar *search=[[UISearchBar alloc]initWithFrame:CGRectMake(8,0,width-16,56)];search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.placeholder=@"搜索应用";search.delegate=self;[header addSubview:search];self.tableView.tableHeaderView=header;
+}
 
-- (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p{NSString*a=[@"app:" stringByAppendingString:self.visible[p.row][@"id"]];NSMutableArray*x=[ABMCSelectedActions(_key)mutableCopy];if([x containsObject:a])[x removeObject:a];else if(x.count<8)[x addObject:a];else return;ABMCStoreSelectedActions(_key,x);[self refreshHeader];[t reloadData];}
+- (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p{NSString*a=[@"app:" stringByAppendingString:self.visible[p.row][@"id"]];NSMutableArray*x=[ABMCSelectedActions(_key)mutableCopy];if([x containsObject:a])[x removeObject:a];else if(x.count<8)[x addObject:a];else return;ABMCStoreSelectedActions(_key,x);[t reloadData];}
 - (void)searchBar:(UISearchBar *)s textDidChange:(NSString *)text{_query=[text copy]?:@"";[self.tableView reloadData];}@end

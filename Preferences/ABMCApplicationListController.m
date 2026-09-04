@@ -7,7 +7,8 @@
 
 - (void)reloadApps { _apps=ABMCActionApplicationRecords(); [self.tableView reloadData]; }
 - (NSArray *)visible{return!_query.length?_apps:[_apps filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary*x,NSDictionary*b){return[x[@"name"] localizedCaseInsensitiveContainsString:_query]||[x[@"id"] localizedCaseInsensitiveContainsString:_query];}]];}
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section { return @"未选择"; }
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section { return ABMCCategoryActionSectionHeader(@"未选动作"); }
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section { return 24.0; }
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return self.visible.count;}
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)p{NSDictionary*x=self.visible[p.row];UITableViewCell*c=[t dequeueReusableCellWithIdentifier:@"app"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"app"];NSString*k=[@"app." stringByAppendingString:x[@"id"]],*token=ABMCDisplayIconToken(k,x[@"id"]);ABMCApplyLargeIcon(c,ABMCTintedIcon(token,nil)?:ABMCIconImageForBundleID(token)?:ABMCIconImageForBundleID(x[@"id"]));c.textLabel.font=[UIFont systemFontOfSize:18];c.textLabel.text=ABMCDisplayTitle(k,x[@"name"]);NSString*a=[@"app:" stringByAppendingString:x[@"id"]];c.accessoryType=[ABMCSelectedActions(_key)containsObject:a]?UITableViewCellAccessoryCheckmark:0;ABMCInstallPresentationLongPress(c,self,k,c.textLabel.text,token,^{[self.tableView reloadData];});return c;}
 - (void)refreshHeader { ABMCInstallStickyCategoryActionHeader(self,_key,@"搜索应用"); }

@@ -8,7 +8,8 @@ static const ABMCBuiltinAction kActions[]={ {@"default",@"系统默认",@"gearsh
 - (void)viewDidLoad {[super viewDidLoad];_query=@"";self.tableView.rowHeight=44.0;self.tableView.estimatedRowHeight=44.0;[self refreshHeader];}
 
 - (NSInteger)raw:(NSInteger)row {NSInteger n=0;for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++)if(!_query.length||[kActions[i].title localizedCaseInsensitiveContainsString:_query])if(n++==row)return i;return NSNotFound;}
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section { return @"未选择"; }
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section { return ABMCCategoryActionSectionHeader(@"未选动作"); }
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section { return 24.0; }
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{NSInteger n=0;for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++)if(!_query.length||[kActions[i].title localizedCaseInsensitiveContainsString:_query])n++;return n;}
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)p{NSInteger i=[self raw:p.row];UITableViewCell*c=[t dequeueReusableCellWithIdentifier:@"cell"]?:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cell"];NSString*k=[@"action." stringByAppendingString:kActions[i].identifier],*token=ABMCDisplayIconToken(k,kActions[i].icon);ABMCApplyLargeIcon(c,ABMCTintedIcon(token,nil));c.textLabel.font=[UIFont systemFontOfSize:18];c.textLabel.text=ABMCDisplayTitle(k,kActions[i].title);c.accessoryType=[ABMCSelectedActions(_key)containsObject:kActions[i].identifier]?UITableViewCellAccessoryCheckmark:0;ABMCInstallPresentationLongPress(c,self,k,c.textLabel.text,token,^{[self.tableView reloadData];});return c;}
 - (void)refreshHeader { ABMCInstallStickyCategoryActionHeader(self,_key,@"搜索基础动作"); }

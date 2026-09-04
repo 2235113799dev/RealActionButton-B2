@@ -48,6 +48,8 @@ void ABMCApplyLargeIcon(UITableViewCell *cell, UIImage *image);
 UIImage *ABMCSelectedActionIcon(NSString *action);
 /// Shared category header: aligned search field plus selected-action card.
 UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *controller, NSString *placeholder);
+/// Native-style category caption using the same metrics as the selected caption.
+UIView *ABMCCategoryActionSectionHeader(NSString *title);
 void ABMCInstallStickyCategoryActionHeader(UITableViewController *controller, NSString *preferenceKey, NSString *placeholder);
 void ABMCUpdateStickyCategoryActionHeader(UITableViewController *controller);
 void ABMCRemoveStickyCategoryActionHeader(UITableViewController *controller);

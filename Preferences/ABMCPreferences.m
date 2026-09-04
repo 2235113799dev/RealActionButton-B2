@@ -119,7 +119,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [launchGroup setProperty:@"URL 可选择直接全屏打开；应用恢复使用 B2 原有的稳定系统启动链。快捷指令通过系统后台运行器执行。" forKey:@"footerText"];
         [specs addObject:launchGroup];
 
-        PSSpecifier *urlMode = [PSSpecifier preferenceSpecifierNamed:@"URL全屏"
+        PSSpecifier *urlMode = [PSSpecifier preferenceSpecifierNamed:@"链接全屏"
                                                                target:self
                                                                   set:@selector(setOpenMode:specifier:)
                                                                   get:@selector(openModeForSpecifier:)
@@ -131,7 +131,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [urlMode setProperty:PREFS_DOMAIN forKey:@"defaults"];
         [urlMode setProperty:@YES forKey:@"default"];
         [urlMode setProperty:@"link" forKey:@"iconToken"];
-        [urlMode setProperty:@"root.urlMode" forKey:@"presentationKey"]; [urlMode setProperty:@"URL全屏" forKey:@"defaultTitle"]; [urlMode setProperty:@"link" forKey:@"defaultIcon"];
+        [urlMode setProperty:@"root.urlMode" forKey:@"presentationKey"]; [urlMode setProperty:@"链接全屏" forKey:@"defaultTitle"]; [urlMode setProperty:@"link" forKey:@"defaultIcon"];
         [urlMode setProperty:ABMCTintedIcon(@"link", ABMCUnifiedIconColor()) forKey:@"iconImage"];
         [specs addObject:urlMode];
 

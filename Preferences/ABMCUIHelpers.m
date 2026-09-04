@@ -175,6 +175,15 @@ static NSString *ABMCCategoryActionTitle(NSString *action) { if([action hasPrefi
 - (void)longPress:(UILongPressGestureRecognizer *)gesture { if(gesture.state!=UIGestureRecognizerStateBegan)return;NSString *key=ABMCCategoryPresentationKey(self.action);ABMCShowPresentationEditor(self.controller,key,ABMCCategoryActionTitle(self.action),@"hand.tap.fill",^{[self refresh];}); }
 - (void)doubleTap:(UITapGestureRecognizer *)gesture { if(gesture.state!=UIGestureRecognizerStateRecognized)return;NSMutableArray *items=[ABMCSelectedActions(self.key)mutableCopy];[items removeObject:self.action];ABMCStoreSelectedActions(self.key,items);[self refresh]; }
 @end
+static const CGFloat ABMCCategoryInset=20.0;
+static const CGFloat ABMCCategoryCaptionHeight=20.0;
+static const CGFloat ABMCCategoryCaptionToCard=4.0;
+static UILabel *ABMCCategoryCaption(NSString *text, CGFloat width) {
+    UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(ABMCCategoryInset,0,width-ABMCCategoryInset*2,ABMCCategoryCaptionHeight)];caption.autoresizingMask=UIViewAutoresizingFlexibleWidth;caption.text=text;caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];return caption;
+}
+UIView *ABMCCategoryActionSectionHeader(NSString *title) {
+    UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,1,ABMCCategoryCaptionHeight+ABMCCategoryCaptionToCard)];header.backgroundColor=UIColor.clearColor;[header addSubview:ABMCCategoryCaption(title,UIScreen.mainScreen.bounds.size.width)];return header;
+}
 @interface ABMCAlignedSearchBar : UISearchBar @end
 @implementation ABMCAlignedSearchBar
 - (void)layoutSubviews {
@@ -185,12 +194,12 @@ static NSString *ABMCCategoryActionTitle(NSString *action) { if([action hasPrefi
 @end
 UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *controller, NSString *placeholder) {
     UITableView *table=[controller isKindOfClass:UITableViewController.class]?((UITableViewController *)controller).tableView:nil;CGFloat width=table.bounds.size.width;if(width<100)width=UIScreen.mainScreen.bounds.size.width;
-    NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=44.0,captionY=60.0,cardY=84.0,height=cardY+count*row+12.0;
+    NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=44.0,captionY=60.0,cardY=captionY+ABMCCategoryCaptionHeight+ABMCCategoryCaptionToCard,height=cardY+count*row+12.0;
     UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];header.autoresizingMask=UIViewAutoresizingFlexibleWidth;header.backgroundColor=UIColor.clearColor;
     UIVisualEffectView *glass=[[UIVisualEffectView alloc]initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial]];glass.frame=header.bounds;glass.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;glass.userInteractionEnabled=NO;[header addSubview:glass];
-    const CGFloat inset=20.0;
+    const CGFloat inset=ABMCCategoryInset;
     ABMCAlignedSearchBar *search=[[ABMCAlignedSearchBar alloc]initWithFrame:CGRectMake(inset,8,width-inset*2,44)];search.tag=736451;search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.searchBarStyle=UISearchBarStyleMinimal;search.backgroundImage=[UIImage new];search.placeholder=placeholder;search.delegate=(id<UISearchBarDelegate>)controller;search.searchTextField.backgroundColor=[UIColor.secondarySystemGroupedBackgroundColor colorWithAlphaComponent:.62];[header addSubview:search];
-    UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(inset,captionY,width-inset*2,20)];caption.autoresizingMask=UIViewAutoresizingFlexibleWidth;caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];[header addSubview:caption];
+    UILabel *caption=ABMCCategoryCaption(@"已选动作",width);caption.frame=CGRectMake(ABMCCategoryInset,captionY,width-ABMCCategoryInset*2,ABMCCategoryCaptionHeight);[header addSubview:caption];
     CGFloat cardWidth=width-inset*2;UIView *card=[[UIView alloc]initWithFrame:CGRectMake(inset,cardY,cardWidth,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=[UIColor.secondarySystemGroupedBackgroundColor colorWithAlphaComponent:.62];card.layer.cornerRadius=15;card.clipsToBounds=YES;[header addSubview:card];
     CGFloat iconCanvas=ABMCUnifiedIconSize()+4.0;
     for(NSUInteger i=0;i<count;i++){NSString *action=items.count?items[i]:@"none";BOOL none=[action isEqualToString:@"none"];UIView *line=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,cardWidth,row)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.userInteractionEnabled=YES;[card addSubview:line];UIImage *raw=none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action);UIImageView *icon=[[UIImageView alloc]initWithImage:NormalizedIcon(raw) ?: raw];icon.frame=CGRectMake(20,(row-iconCanvas)*.5,iconCanvas,iconCanvas);icon.contentMode=UIViewContentModeScaleAspectFit;[line addSubview:icon];UILabel *title=[[UILabel alloc]initWithFrame:CGRectMake(64,0,cardWidth-74,row)];title.autoresizingMask=UIViewAutoresizingFlexibleWidth;title.text=none?@"无操作":ABMCCategoryActionTitle(action);title.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;title.font=[UIFont systemFontOfSize:18];[line addSubview:title];ABMCCategorySelectedTarget *target=[ABMCCategorySelectedTarget new];target.controller=controller;target.key=preferenceKey;target.action=action;UILongPressGestureRecognizer *hold=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];hold.minimumPressDuration=.45;[line addGestureRecognizer:hold];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[line addGestureRecognizer:doubleTap];objc_setAssociatedObject(line,@selector(ABMCCategoryActionHeader),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<count){UIView *separator=[[UIView alloc]initWithFrame:CGRectMake(64,row-.5,cardWidth-64,.5)];separator.autoresizingMask=UIViewAutoresizingFlexibleWidth;separator.backgroundColor=UIColor.separatorColor;[line addSubview:separator];}}

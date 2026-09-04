@@ -156,7 +156,6 @@ static NSString *ABMCBriefActionTitle(NSString *action) {
 static NSDictionary *ABMCLinkRecord(NSString *identifier);
 // Match the exact horizontal inset used by iOS InsetGrouped rows on this
 // Settings layout. All selected-action cards use these constants exclusively.
-static const CGFloat kABMCGroupedInset = 42.0;
 static const CGFloat kABMCSelectedRowHeight = 44.0;
 static const CGFloat kABMCSelectedIconMaximum = 30.0;
 static const CGFloat kABMCSelectedTextSize = 18.0;

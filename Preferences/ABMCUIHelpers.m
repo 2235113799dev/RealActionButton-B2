@@ -139,6 +139,9 @@ void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *acti
     CFPreferencesSetAppValue(CFSTR("actionPanels"),(__bridge CFPropertyListRef)panels,ABMCDomain);ABMCNotifyChanged();
 }
 
+static NSString *ABMCBriefActionTitle(NSString *action) { if([action hasPrefix:@"shortcutid:"]){NSArray *p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>1?p[1]:@"快捷指令";}if([action hasPrefix:@"app:"])return ABMCApplicationName([action substringFromIndex:4]) ?: [action substringFromIndex:4];if([action hasPrefix:@"link:"])return @"URL";NSDictionary *n=@{ @"default":@"系统默认",@"flashlight":@"手电筒",@"camera":@"相机",@"silent":@"静音切换",@"screenshot":@"截屏",@"lock":@"锁屏",@"controlCenter":@"控制中心",@"notificationCenter":@"通知中心",@"settings":@"设置",@"respring":@"重启",@"wechatScan":@"微信扫码",@"wechatPay":@"微信付款码",@"alipayScan":@"支付宝扫码",@"alipayPay":@"支付宝付款码"};return n[action] ?: @"已选动作"; }
+UIView *ABMCSelectedActionsBanner(NSString *preferenceKey) { NSArray *items=ABMCSelectedActions(preferenceKey);UIView *box=[[UIView alloc]initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,112)];UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(28,4,240,28)];caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[box addSubview:caption];UIView *card=[[UIView alloc]initWithFrame:CGRectMake(20,34,box.bounds.size.width-40,66)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=18;[box addSubview:card];NSString *title=!items.count?@"无操作":items.count==1?ABMCBriefActionTitle(items.firstObject):[NSString stringWithFormat:@"已选动作组合（%lu）",(unsigned long)items.count];NSString *icon=!items.count?@"nosign":items.count>1?@"square.grid.2x2.fill":@"hand.tap.fill";UIImageView *image=[[UIImageView alloc]initWithImage:ABMCTintedIcon(icon,!items.count?UIColor.systemRedColor:UIColor.systemBlueColor)];image.frame=CGRectMake(22,18,30,30);image.contentMode=UIViewContentModeScaleAspectFit;[card addSubview:image];UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(68,10,card.bounds.size.width-82,46)];label.autoresizingMask=UIViewAutoresizingFlexibleWidth;label.text=title;label.textColor=!items.count?UIColor.systemRedColor:UIColor.systemBlueColor;label.font=[UIFont systemFontOfSize:22 weight:UIFontWeightRegular];[card addSubview:label];return box; }
+
 @interface ABMCPresentationLongPressTarget : NSObject
 @property (nonatomic, weak) UIViewController *controller;
 @property (nonatomic, copy) NSString *key, *title, *icon;
@@ -148,13 +151,7 @@ void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *acti
 @implementation ABMCPresentationLongPressTarget
 - (void)pressed:(UILongPressGestureRecognizer *)gesture {
     if (gesture.state != UIGestureRecognizerStateBegan || !self.controller || !self.key.length) return;
-    UIAlertController *sheet=[UIAlertController alertControllerWithTitle:self.title ?: @"显示外观" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"修改显示" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a){ ABMCShowPresentationEditor(self.controller,self.key,self.title,self.icon,self.completion); }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"清空显示" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a){ ABMCClearPresentationOverride(self.key); if(self.completion)self.completion(); }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    UIPopoverPresentationController *popover=sheet.popoverPresentationController;
-    if(popover){popover.sourceView=gesture.view;popover.sourceRect=gesture.view.bounds;}
-    [self.controller presentViewController:sheet animated:YES completion:nil];
+    ABMCShowPresentationEditor(self.controller,self.key,self.title,self.icon,self.completion);
 }
 @end
 void ABMCInstallPresentationLongPress(UITableViewCell *cell, UIViewController *controller, NSString *key, NSString *title, NSString *icon, dispatch_block_t completion) {
@@ -181,6 +178,17 @@ UIImage *ABMCIconImageForBundleID(NSString *identifier) {
     } @catch (NSException *exception) { return nil; }
 }
 UIImage *ABMCIconImageForProxy(id application) { return ABMCIconImageForBundleID(ABMCBundleIdentifierForApplication(application)); }
+BOOL ABMCApplicationHasRealIcon(id application) {
+    if (!application || BoolCall(application,@"isPlaceholder") || BoolCall(application,@"isApplicationPlaceholder") || BoolCall(application,@"isHidden") || BoolCall(application,@"launchProhibited") || BoolCall(application,@"isLaunchProhibited")) return NO;
+    UIImage *icon=ABMCIconImageForProxy(application); if(!icon) return NO;
+    // LaunchServices returns the exact same generic white blueprint image for
+    // service proxies. Compare it once against a known non-launchable proxy;
+    // this avoids fragile name-only filtering and keeps real system apps.
+    static NSData *blueprint; static dispatch_once_t once;
+    dispatch_once(&once, ^{ UIImage *sample=ABMCIconImageForBundleID(@"com.apple.AccountAuthenticationDialog"); blueprint=sample?UIImagePNGRepresentation(sample):nil; });
+    NSData *data=UIImagePNGRepresentation(icon);
+    return !blueprint.length || ![data isEqualToData:blueprint];
+}
 
 UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor) {
     if (glyph <= 0) return nil;

@@ -15,6 +15,7 @@ NSString *ABMCBundleIdentifierForApplication(id application);
 NSString *ABMCDisplayNameForApplication(id application);
 UIImage *ABMCIconImageForBundleID(NSString *bundleID);
 UIImage *ABMCIconImageForProxy(id application);
+BOOL ABMCApplicationHasRealIcon(id application);
 /// Builds an app's native long-press shortcut icon using SpringBoardHome.
 /// Uses Apple's VoiceShortcutClient renderer; returns nil when unavailable.
 UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor);
@@ -33,6 +34,7 @@ void ABMCInstallPresentationLongPress(UITableViewCell *cell, UIViewController *c
 /// Shared 1–8 action selection, persisted independently of each category UI.
 NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey);
 void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *actions);
+UIView *ABMCSelectedActionsBanner(NSString *preferenceKey);
 CGFloat ABMCUnifiedIconSize(void);
 UIColor *ABMCUnifiedIconColor(void);
 NSString *ABMCUnifiedIconColorHex(void);

@@ -6,6 +6,9 @@
 #import <dlfcn.h>
 
 #define PREFS_DOMAIN CFSTR("com.huynguyen.actionbuttonmulticlick")
+@interface UIImage (ABMCMenuIcon)
++ (instancetype)_applicationIconImageForBundleIdentifier:(NSString *)identifier format:(int)format scale:(CGFloat)scale;
+@end
 
 @interface ABMCActionExecutor ()
 - (void)openFullscreenURL:(NSURL *)url;
@@ -468,20 +471,22 @@ BOOL ABMCPerformingDefaultAction = NO;
 
 - (NSString *)nativePanelTitleForAction:(NSString *)action {
     if([action hasPrefix:@"shortcutid:"]){NSArray *p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>1?p[1]:@"快捷指令";}
-    if([action hasPrefix:@"app:"])return [action substringFromIndex:4];
+    if([action hasPrefix:@"app:"]){NSString *bid=[action substringFromIndex:4];Class c=NSClassFromString(@"LSApplicationWorkspace");SEL d=NSSelectorFromString(@"defaultWorkspace"),f=NSSelectorFromString(@"applicationProxyForIdentifier:");id w=[c respondsToSelector:d]?((id(*)(id,SEL))objc_msgSend)(c,d):nil;id proxy=[w respondsToSelector:f]?((id(*)(id,SEL,id))objc_msgSend)(w,f,bid):nil;SEL n=NSSelectorFromString(@"localizedName");NSString *name=[proxy respondsToSelector:n]?((id(*)(id,SEL))objc_msgSend)(proxy,n):nil;return name.length?name:bid;}
     if([action hasPrefix:@"url:"])return [action substringFromIndex:4];
-    if([action hasPrefix:@"link:"])return @"URL";
+    if([action hasPrefix:@"link:"]){CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("savedLinks"),PREFS_DOMAIN);NSString *title=nil;for(NSDictionary *x in (raw&&CFGetTypeID(raw)==CFArrayGetTypeID()?(__bridge NSArray*)raw:@[]))if([x[@"id"]isEqual:[action substringFromIndex:5]]){title=x[@"title"];break;}if(raw)CFRelease(raw);return title ?: @"URL";}
     NSDictionary *names=@{ @"default":@"系统默认",@"flashlight":@"手电筒",@"camera":@"相机",@"silent":@"静音切换",@"screenshot":@"截屏",@"lock":@"锁屏",@"controlCenter":@"控制中心",@"notificationCenter":@"通知中心",@"settings":@"打开设置",@"respring":@"重启界面",@"wechatScan":@"微信扫码",@"wechatPay":@"微信付款码",@"alipayScan":@"支付宝扫码",@"alipayPay":@"支付宝付款码"};return names[action] ?: @"动作";
 }
+- (UIImage *)nativePanelIconForAction:(NSString *)action {
+    NSString *token=nil;if([action hasPrefix:@"app:"])token=[action substringFromIndex:4];else if([action hasPrefix:@"shortcutid:"])token=@"square.stack.3d.up.fill";else if([action hasPrefix:@"link:"]||[action hasPrefix:@"url:"])token=@"link";else { NSDictionary *icons=@{ @"default":@"gearshape.fill",@"flashlight":@"flashlight.on.fill",@"camera":@"camera.fill",@"silent":@"bell.slash.fill",@"screenshot":@"viewfinder",@"lock":@"lock.fill",@"controlCenter":@"switch.2",@"notificationCenter":@"bell.fill",@"settings":@"gearshape.fill",@"respring":@"arrow.clockwise",@"wechatScan":@"qrcode.viewfinder",@"wechatPay":@"creditcard.fill",@"alipayScan":@"qrcode.viewfinder",@"alipayPay":@"creditcard.fill"};token=icons[action] ?: @"square.grid.2x2.fill";}
+    UIImage *icon=[UIImage systemImageNamed:token];if(!icon&&token.length){@try{icon=[UIImage _applicationIconImageForBundleIdentifier:token format:0 scale:UIScreen.mainScreen.scale];}@catch(NSException *e){}}return icon ?: [UIImage systemImageNamed:@"square.grid.2x2.fill"];
+}
 - (void)showActionPanel:(NSArray<NSString *> *)actions {
-    NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id action in actions)if([action isKindOfClass:NSString.class]&&[action length]&&![action isEqualToString:@"none"])[unique addObject:action];NSArray *limited=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];if(!limited.count)return;
-    if(limited.count==1){[self executeAction:limited.firstObject];return;}
+    NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id action in actions)if([action isKindOfClass:NSString.class]&&[action length]&&![action isEqualToString:@"none"])[unique addObject:action];NSArray *limited=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];if(!limited.count)return;if(limited.count==1){[self executeAction:limited.firstObject];return;}
     dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool { @try {
-        UIWindow *window=nil;for(UIScene *scene in UIApplication.sharedApplication.connectedScenes){if(![scene isKindOfClass:UIWindowScene.class]||scene.activationState!=UISceneActivationStateForegroundActive)continue;for(UIWindow *candidate in ((UIWindowScene *)scene).windows)if(candidate.isKeyWindow){window=candidate;break;}if(window)break;}
-        UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;if(!host)return;
-        UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@"选择动作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-        for(NSString *action in limited){NSString *title=[self nativePanelTitleForAction:action];[sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a){[self executeAction:action];}]];}
-        [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];UIPopoverPresentationController *popover=sheet.popoverPresentationController;if(popover){popover.sourceView=host.view;popover.sourceRect=host.view.bounds;}[host presentViewController:sheet animated:YES completion:nil];
+        UIWindow *window=nil;for(UIScene *scene in UIApplication.sharedApplication.connectedScenes){if(![scene isKindOfClass:UIWindowScene.class]||scene.activationState!=UISceneActivationStateForegroundActive)continue;for(UIWindow *candidate in ((UIWindowScene *)scene).windows)if(candidate.isKeyWindow){window=candidate;break;}if(window)break;}UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;if(!host)return;
+        NSMutableArray *children=[NSMutableArray array];for(NSString *action in limited){UIAction *item=[UIAction actionWithTitle:[self nativePanelTitleForAction:action] image:[self nativePanelIconForAction:action] identifier:nil handler:^(__kindof UIAction *x){[self executeAction:action];}];[children addObject:item];}
+        // UIKit's native menu rows are the system folder-style banner list and support image + title.
+        UIMenu *menu=[UIMenu menuWithTitle:@"选择动作" children:children];UIButton *anchor=[UIButton buttonWithType:UIButtonTypeSystem];anchor.frame=CGRectMake(CGRectGetMidX(host.view.bounds)-1,CGRectGetMaxY(host.view.bounds)-2,2,2);anchor.alpha=0.01;anchor.menu=menu;anchor.showsMenuAsPrimaryAction=YES;[host.view addSubview:anchor];[anchor sendActionsForControlEvents:UIControlEventTouchUpInside];dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[anchor removeFromSuperview];});
     } @catch(NSException *e){} } });
 }
 

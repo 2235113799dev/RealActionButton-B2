@@ -78,7 +78,7 @@ static UIImage *IconForAction(NSString *action) {
 
 @interface ABMCActionListController ()
 @end
-@implementation ABMCActionListController { NSString *_key; NSString *_fallback; NSString *_current; }
+@implementation ABMCActionListController { NSString *_key; NSString *_fallback; NSString *_current; NSTimeInterval _lastSelectedTap; }
 - (void)viewDidLoad { [super viewDidLoad]; PSSpecifier *p=self.specifier; _key=[[p propertyForKey:@"key"] copy]; _fallback=[[p propertyForKey:@"default"] copy]; self.title=[p name].length?[p name]:@"选择动作"; }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain); _current=v?(__bridge_transfer NSString *)v:(_fallback?:@"none"); _specifiers=nil; [self reloadSpecifiers]; }
 - (NSArray *)specifiers {
@@ -104,8 +104,9 @@ static UIImage *IconForAction(NSString *action) {
     return cell;
 }
 
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath { PSSpecifier *s=[self specifierAtIndexPath:indexPath]; if(![s propertyForKey:@"selectedAction"])return; NSTimeInterval now=NSDate.date.timeIntervalSinceReferenceDate; if(now-_lastSelectedTap<0.42){_lastSelectedTap=0;[self clearCurrentAction];}else _lastSelectedTap=now; }
 - (void)doubleTapSelected:(UITapGestureRecognizer *)gesture { if(gesture.state==UIGestureRecognizerStateRecognized)[self clearCurrentAction]; }
-- (void)clearCurrentAction { CFPreferencesSetAppValue((__bridge CFStringRef)_key,CFSTR("none"),Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged"),NULL,NULL,YES);_current=@"none";_specifiers=nil;[self reloadSpecifiers]; }
+- (void)clearCurrentAction { ABMCStoreSelectedActions(_key,@[]);_current=@"none";_specifiers=nil;[self reloadSpecifiers]; }
 
 - (void)open:(PSSpecifier *)specifier { NSString *category=[specifier propertyForKey:@"category"]; UIViewController *controller=nil; if([category isEqualToString:@"builtin"])controller=[[ABMCBuiltinListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"app"])controller=[[ABMCApplicationListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"shortcut"])controller=[[ABMCShortcutListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"link"])controller=[[ABMCLinkListController alloc]initWithPreferenceKey:_key]; if(controller)[self.navigationController pushViewController:controller animated:YES]; }
 - (void)test:(PSSpecifier *)specifier { if(!_current.length||[_current isEqualToString:@"none"])return; CFPreferencesSetAppValue(CFSTR("testAction"),(__bridge CFPropertyListRef)_current,Domain); CFPreferencesAppSynchronize(Domain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),TestNotice,NULL,NULL,YES); }

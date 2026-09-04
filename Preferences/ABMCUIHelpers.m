@@ -189,29 +189,31 @@ UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *cont
     return header;
 }
 static const void *kABMCStickyHeaderKey=&kABMCStickyHeaderKey;
-static UIView *ABMCStickyHeaderHost(UITableViewController *controller) { return controller.navigationController.view ?: controller.tableView.superview; }
+static UIView *ABMCStickyHeaderHost(UITableViewController *controller) { return controller.navigationController.view ?: controller.view; }
+static CGRect ABMCStickyHeaderFrame(UITableViewController *controller, UIView *header) {
+    UITableView *table=controller.tableView;UIView *host=ABMCStickyHeaderHost(controller);UINavigationBar *bar=controller.navigationController.navigationBar;
+    CGRect tableFrame=[table.superview convertRect:table.frame toView:host];
+    // UITableViewController may extend its table behind the navigation bar, so
+    // tableFrame.origin.y is not the visible content start. The navigation bar
+    // bottom is the only stable anchor for “below the back button”.
+    CGFloat top=CGRectGetMinY(tableFrame);
+    if(bar.superview){CGRect navigationFrame=[bar.superview convertRect:bar.frame toView:host];top=CGRectGetMaxY(navigationFrame);}
+    return CGRectMake(CGRectGetMinX(tableFrame),top,CGRectGetWidth(tableFrame),CGRectGetHeight(header.bounds));
+}
 void ABMCInstallStickyCategoryActionHeader(UITableViewController *controller, NSString *preferenceKey, NSString *placeholder) {
     if(!controller)return;
     UITableView *table=controller.tableView;UIView *host=ABMCStickyHeaderHost(controller);if(!host)return;
     UIView *old=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);[old removeFromSuperview];
     UIView *header=ABMCCategoryActionHeader(preferenceKey,controller,placeholder);
-    // Reserve scrolling space with a transparent table header. The visible
-    // header is a sibling in the navigation content hierarchy, never a table
-    // subview, so scroll offsets cannot push it under the navigation bar.
     UIView *spacer=[[UIView alloc]initWithFrame:CGRectMake(0,0,table.bounds.size.width,CGRectGetHeight(header.bounds))];spacer.backgroundColor=UIColor.clearColor;spacer.userInteractionEnabled=NO;table.tableHeaderView=spacer;
-    // table.bounds is content-space and changes while scrolling. Convert the
-    // stable table frame instead: its top is exactly below the navigation bar.
-    CGRect tableFrame=[table.superview convertRect:table.frame toView:host];
-    header.frame=CGRectMake(CGRectGetMinX(tableFrame),CGRectGetMinY(tableFrame),CGRectGetWidth(tableFrame),CGRectGetHeight(header.bounds));
-    header.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleBottomMargin;header.opaque=YES;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
+    header.frame=ABMCStickyHeaderFrame(controller,header);header.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleBottomMargin;header.opaque=YES;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
     UINavigationBar *bar=controller.navigationController.navigationBar;
     if(bar.superview==host)[host insertSubview:header belowSubview:bar];else [host addSubview:header];
     table.scrollIndicatorInsets=UIEdgeInsetsMake(CGRectGetHeight(header.bounds),0,0,0);
     objc_setAssociatedObject(controller,kABMCStickyHeaderKey,header,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 void ABMCUpdateStickyCategoryActionHeader(UITableViewController *controller) {
-    UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);UITableView *table=controller.tableView;UIView *host=ABMCStickyHeaderHost(controller);if(!header||!host||!table.superview)return;
-    CGRect tableFrame=[table.superview convertRect:table.frame toView:host];header.frame=CGRectMake(CGRectGetMinX(tableFrame),CGRectGetMinY(tableFrame),CGRectGetWidth(tableFrame),CGRectGetHeight(header.bounds));
+    UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);if(header)header.frame=ABMCStickyHeaderFrame(controller,header);
 }
 void ABMCRemoveStickyCategoryActionHeader(UITableViewController *controller) { UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);[header removeFromSuperview];objc_setAssociatedObject(controller,kABMCStickyHeaderKey,nil,OBJC_ASSOCIATION_ASSIGN); }
 static NSMutableDictionary *ABMCActionPanels(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("actionPanels"),ABMCDomain); NSMutableDictionary *r=v&&CFGetTypeID(v)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)v mutableCopy]:[NSMutableDictionary dictionary]; if(v)CFRelease(v); return r; }

@@ -191,23 +191,23 @@ UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *cont
 static const void *kABMCStickyHeaderKey=&kABMCStickyHeaderKey;
 void ABMCInstallStickyCategoryActionHeader(UITableViewController *controller, NSString *preferenceKey, NSString *placeholder) {
     if(!controller)return;
-    UITableView *table=controller.tableView;UIView *host=table.superview;if(!host)return;
+    UITableView *table=controller.tableView;
     UIView *old=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);[old removeFromSuperview];
     UIView *header=ABMCCategoryActionHeader(preferenceKey,controller,placeholder);
-    CGRect visible=[table convertRect:table.bounds toView:host];
-    header.frame=CGRectMake(CGRectGetMinX(visible),CGRectGetMinY(visible),CGRectGetWidth(visible),CGRectGetHeight(header.bounds));
-    header.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleBottomMargin;
-    header.opaque=YES;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
-    [host addSubview:header];[host bringSubviewToFront:header];
-    // A blank native table header reserves the fixed region. List cells scroll
-    // below it while the sibling header remains opaque and stationary.
+    // tableHeaderView reserves layout space only. The opaque overlay itself is
+    // added last as a table subview, so UITableViewController cannot cover it.
     UIView *spacer=[[UIView alloc]initWithFrame:CGRectMake(0,0,table.bounds.size.width,CGRectGetHeight(header.bounds))];spacer.backgroundColor=UIColor.clearColor;spacer.userInteractionEnabled=NO;table.tableHeaderView=spacer;
+    header.frame=CGRectMake(0,table.contentOffset.y,table.bounds.size.width,CGRectGetHeight(header.bounds));
+    header.autoresizingMask=UIViewAutoresizingFlexibleWidth;header.opaque=YES;header.backgroundColor=UIColor.systemGroupedBackgroundColor;header.layer.zPosition=1000;
+    [table addSubview:header];[table bringSubviewToFront:header];
     table.scrollIndicatorInsets=UIEdgeInsetsMake(CGRectGetHeight(header.bounds),0,0,0);
     objc_setAssociatedObject(controller,kABMCStickyHeaderKey,header,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 void ABMCUpdateStickyCategoryActionHeader(UITableViewController *controller) {
-    UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);UITableView *table=controller.tableView;if(!header||!table.superview)return;
-    CGRect visible=[table convertRect:table.bounds toView:table.superview];header.frame=CGRectMake(CGRectGetMinX(visible),CGRectGetMinY(visible),CGRectGetWidth(visible),CGRectGetHeight(header.bounds));[table.superview bringSubviewToFront:header];
+    UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);UITableView *table=controller.tableView;if(!header)return;
+    // A table subview remains visually fixed when its content-space Y exactly
+    // follows contentOffset. Do not add adjustedContentInset a second time.
+    header.frame=CGRectMake(0,table.contentOffset.y,table.bounds.size.width,CGRectGetHeight(header.bounds));[table bringSubviewToFront:header];
 }
 static NSMutableDictionary *ABMCActionPanels(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("actionPanels"),ABMCDomain); NSMutableDictionary *r=v&&CFGetTypeID(v)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)v mutableCopy]:[NSMutableDictionary dictionary]; if(v)CFRelease(v); return r; }
 NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey) {

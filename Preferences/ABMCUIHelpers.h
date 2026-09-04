@@ -28,6 +28,11 @@ NSString *ABMCDisplayTitle(NSString *key, NSString *fallback);
 NSString *ABMCDisplayIconToken(NSString *key, NSString *fallback);
 void ABMCShowPresentationEditor(UIViewController *controller, NSString *key, NSString *defaultTitle, NSString *defaultIcon, dispatch_block_t completion);
 void ABMCClearPresentationOverride(NSString *key);
+/// Installs the common long-press “修改显示 / 清空显示” native action sheet.
+void ABMCInstallPresentationLongPress(UITableViewCell *cell, UIViewController *controller, NSString *key, NSString *title, NSString *icon, dispatch_block_t completion);
+/// Shared 1–8 action selection, persisted independently of each category UI.
+NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey);
+void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *actions);
 CGFloat ABMCUnifiedIconSize(void);
 UIColor *ABMCUnifiedIconColor(void);
 NSString *ABMCUnifiedIconColorHex(void);

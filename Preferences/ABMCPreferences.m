@@ -108,7 +108,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [specs addObject:longPress];
 
         PSSpecifier *appearanceGroup = [PSSpecifier groupSpecifierWithName:@"全局外观"];
-        [appearanceGroup setProperty:@"图标尺寸和颜色全局生效。所有动作、分组、应用、指令和 URL 均可左滑修改或清空；清空只恢复本插件中的默认显示。" forKey:@"footerText"];
+        [appearanceGroup setProperty:@"图标尺寸和颜色全局生效。所有动作、分组、应用、指令和 URL 均可长按修改或清空；清空只恢复本插件中的默认显示。" forKey:@"footerText"];
         [specs addObject:appearanceGroup];
         PSSpecifier *size = [PSSpecifier preferenceSpecifierNamed:@"图标尺寸" target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil];
         [size setProperty:@"iconStyleSize" forKey:@"styleMode"]; [size setProperty:@"root.iconSize" forKey:@"presentationKey"]; [size setProperty:@"图标尺寸" forKey:@"defaultTitle"]; [size setProperty:@"arrow.up.left.and.arrow.down.right" forKey:@"defaultIcon"]; [size setProperty:ABMCTintedIcon(@"arrow.up.left.and.arrow.down.right", ABMCUnifiedIconColor()) forKey:@"iconImage"]; size->action=@selector(openIconStyle:); [specs addObject:size];
@@ -116,7 +116,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [color setProperty:@"iconStyleColor" forKey:@"styleMode"]; [color setProperty:@"root.iconColor" forKey:@"presentationKey"]; [color setProperty:@"图标颜色" forKey:@"defaultTitle"]; [color setProperty:@"paintpalette.fill" forKey:@"defaultIcon"]; [color setProperty:ABMCTintedIcon(@"paintpalette.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"]; color->action=@selector(openIconStyle:); [specs addObject:color];
 
         PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"启动方式"];
-        [launchGroup setProperty:@"应用启动统一使用 SpringBoard 正常激活链；关闭“应用全屏”时改走真实桌面图标路径，供分屏插件接管。快捷指令通过系统后台运行器执行。" forKey:@"footerText"];
+        [launchGroup setProperty:@"URL 可选择直接全屏打开；应用恢复使用 B2 原有的稳定系统启动链。快捷指令通过系统后台运行器执行。" forKey:@"footerText"];
         [specs addObject:launchGroup];
 
         PSSpecifier *urlMode = [PSSpecifier preferenceSpecifierNamed:@"URL全屏"
@@ -135,20 +135,7 @@ static NSString *titleForActionID(NSString *actionID) {
         [urlMode setProperty:ABMCTintedIcon(@"link", ABMCUnifiedIconColor()) forKey:@"iconImage"];
         [specs addObject:urlMode];
 
-        NSArray *launchModes = @[
-            @[@"应用全屏", @"appOpenMode", @"app.badge.checkmark"]
-        ];
-        for (NSArray *item in launchModes) {
-            PSSpecifier *mode = [PSSpecifier preferenceSpecifierNamed:item[0] target:self set:@selector(setOpenMode:specifier:) get:@selector(openModeForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
-            [mode setProperty:item[1] forKey:@"key"];
-            [mode setProperty:item[1] forKey:@"id"];
-            [mode setProperty:PREFS_DOMAIN forKey:@"defaults"];
-            [mode setProperty:@YES forKey:@"default"];
-            [mode setProperty:item[2] forKey:@"iconToken"];
-            [mode setProperty:[@"root." stringByAppendingString:item[1]] forKey:@"presentationKey"]; [mode setProperty:item[0] forKey:@"defaultTitle"]; [mode setProperty:item[2] forKey:@"defaultIcon"];
-            [mode setProperty:ABMCTintedIcon(item[2], ABMCUnifiedIconColor()) forKey:@"iconImage"];
-            [specs addObject:mode];
-        }
+
 
         _specifiers = specs;
     }
@@ -197,17 +184,9 @@ static NSString *titleForActionID(NSString *actionID) {
             [spec setProperty:ABMCDisplayTitle(presentationKeyForActionID(actionID), title) forKey:@"cellValue"];
         }
     }
-    for (NSString *identifier in @[@"urlOpenMode", @"appOpenMode"]) [self reloadSpecifierID:identifier];
+    [self reloadSpecifierID:@"urlOpenMode"];
 }
-- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
-    PSSpecifier *spec=[self specifierAtIndexPath:indexPath]; NSString *actionKey=[spec propertyForKey:@"key"];
-    NSString *key=[spec propertyForKey:@"presentationKey"],*title=[spec propertyForKey:@"defaultTitle"],*icon=[spec propertyForKey:@"defaultIcon"];
-    if(!key.length && [actionKey hasSuffix:@"Action"]){CFPreferencesAppSynchronize((__bridge CFStringRef)PREFS_DOMAIN);CFStringRef raw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)actionKey,(__bridge CFStringRef)PREFS_DOMAIN);NSString *action=raw?(__bridge_transfer NSString *)raw:[spec propertyForKey:@"default"];title=titleForActionID(action);icon=[action hasPrefix:@"app:"]?[action substringFromIndex:4]:([action hasPrefix:@"shortcutid:"]?@"square.stack.3d.up.fill":@"hand.tap.fill");key=[action hasPrefix:@"app:"]?[@"app." stringByAppendingString:[action substringFromIndex:4]]:([action hasPrefix:@"shortcutid:"]?[@"shortcut." stringByAppendingString:[[action substringFromIndex:11] componentsSeparatedByString:@"|"].firstObject?:@""]:[@"action." stringByAppendingString:action?:@"none"]);}
-    if(!key.length)return nil;
-    title=ABMCDisplayTitle(key,title ?: [spec name]);icon=ABMCDisplayIconToken(key,icon ?: @"hand.tap.fill");
-    UIContextualAction *edit=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"修改" handler:^(__unused UIContextualAction*a,__unused UIView*v,void(^done)(BOOL)){ABMCShowPresentationEditor(self,key,title,icon,^{[self->_specifiers removeAllObjects];self->_specifiers=nil;[self reloadSpecifiers];done(YES);});}];edit.backgroundColor=UIColor.systemBlueColor;
-    UIContextualAction *clear=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"清空" handler:^(__unused UIContextualAction*a,__unused UIView*v,void(^done)(BOOL)){ABMCClearPresentationOverride(key);self->_specifiers=nil;[self reloadSpecifiers];done(YES);}];clear.backgroundColor=UIColor.systemGrayColor;return[UISwipeActionsConfiguration configurationWithActions:@[clear,edit]];
-}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     // Re-apply the single global canvas for root PSLinkCell and PSSwitchCell
@@ -222,6 +201,7 @@ static NSString *titleForActionID(NSString *actionID) {
     UIImage *fixed=[specifier propertyForKey:@"iconImage"];
     if(token.length) ABMCApplyLargeIcon(cell,ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token));
     else if([fixed isKindOfClass:UIImage.class]) ABMCApplyLargeIcon(cell,fixed);
+    if(presentationKey.length) ABMCInstallPresentationLongPress(cell,self,presentationKey,ABMCDisplayTitle(presentationKey,defaultTitle ?: [specifier name]),token ?: defaultIcon,^{self->_specifiers=nil;[self reloadSpecifiers];});
     return cell;
 }
 

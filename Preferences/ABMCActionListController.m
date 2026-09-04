@@ -41,6 +41,7 @@ static NSString *TitleForAction(NSString *action) {
     if (info) return info->title;
     if ([action hasPrefix:@"app:"]) return ABMCApplicationName([action substringFromIndex:4]);
     if ([action hasPrefix:@"shortcutid:"]) { NSArray *p = [[action substringFromIndex:11] componentsSeparatedByString:@"|"]; return p.count > 1 ? p[1] : @"快捷指令"; }
+    if ([action hasPrefix:@"actionpanel:"]) return @"已选动作组合";
     if ([action hasPrefix:@"shortcutpanel:"]) return @"快捷指令面板";
     if ([action hasPrefix:@"shortcut:"]) return [action substringFromIndex:9];
     if ([action hasPrefix:@"link:"]) return SavedURLTitle([action substringFromIndex:5]) ?: @"URL（未找到）";
@@ -50,12 +51,13 @@ static NSString *TitleForAction(NSString *action) {
 static NSString *PresentationKeyForAction(NSString *action) {
     if ([action hasPrefix:@"app:"]) return [@"app." stringByAppendingString:[action substringFromIndex:4]];
     if ([action hasPrefix:@"shortcutid:"]) return [@"shortcut." stringByAppendingString:[[action substringFromIndex:11] componentsSeparatedByString:@"|"].firstObject ?: @""];
+    if ([action hasPrefix:@"link:"]) return [@"link." stringByAppendingString:[action substringFromIndex:5]];
     return [@"action." stringByAppendingString:action ?: @"none"];
 }
 static NSString *DisplayedTitleForAction(NSString *action) { return ABMCDisplayTitle(PresentationKeyForAction(action), TitleForAction(action)); }
 static UIImage *IconForAction(NSString *action) {
     const ActionInfo *info = InfoForAction(action);
-    if ([action hasPrefix:@"shortcutpanel:"]) return ABMCTintedIcon(@"square.grid.2x2.fill", nil);
+    if ([action hasPrefix:@"actionpanel:"] || [action hasPrefix:@"shortcutpanel:"]) return ABMCTintedIcon(@"square.grid.2x2.fill", nil);
     if ([action hasPrefix:@"shortcutid:"]) {
         NSArray *parts=[[action substringFromIndex:11] componentsSeparatedByString:@"|"];
         if(parts.count>3){UIImage *workflow=ABMCWorkflowIconImage([parts[2] integerValue],[parts[3] longLongValue]);if(workflow)return workflow;}
@@ -96,23 +98,15 @@ static UIImage *IconForAction(NSString *action) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell=[super tableView:tableView cellForRowAtIndexPath:indexPath]; PSSpecifier *s=[self specifierAtIndexPath:indexPath];
     cell.accessoryView=nil; cell.imageView.hidden=NO; cell.imageView.image=nil; cell.textLabel.textColor=UIColor.labelColor; cell.textLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];
-    if ([s propertyForKey:@"selectedAction"]) { ABMCApplyLargeIcon(cell, IconForAction(_current)); cell.textLabel.textColor=ABMCUnifiedIconColor(); if(!objc_getAssociatedObject(cell,@selector(doubleTapSelected:))){UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(doubleTapSelected:)];tap.numberOfTapsRequired=2;[cell addGestureRecognizer:tap];objc_setAssociatedObject(cell,@selector(doubleTapSelected:),tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);} }
+    if ([s propertyForKey:@"selectedAction"]) { ABMCApplyLargeIcon(cell, IconForAction(_current)); cell.textLabel.textColor=[_current isEqualToString:@"none"] ? UIColor.systemRedColor : UIColor.systemBlueColor; ABMCInstallPresentationLongPress(cell,self,PresentationKeyForAction(_current),DisplayedTitleForAction(_current),@"hand.tap.fill",^{self->_specifiers=nil;[self reloadSpecifiers];}); if(!objc_getAssociatedObject(cell,@selector(doubleTapSelected:))){UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(doubleTapSelected:)];tap.numberOfTapsRequired=2;[cell addGestureRecognizer:tap];objc_setAssociatedObject(cell,@selector(doubleTapSelected:),tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);} }
     else if ([[s propertyForKey:@"iconToken"] length]) { ABMCApplyLargeIcon(cell, ABMCTintedIcon([s propertyForKey:@"iconToken"], nil)); }
-    else { NSString *key=[s propertyForKey:@"presentationKey"],*fallback=[s propertyForKey:@"defaultIcon"]; if (fallback.length) { NSString *token=ABMCDisplayIconToken(key,fallback); ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(@"square.grid.2x2.fill",nil)); } }
+    else { NSString *key=[s propertyForKey:@"presentationKey"],*fallback=[s propertyForKey:@"defaultIcon"]; if (fallback.length) { NSString *token=ABMCDisplayIconToken(key,fallback); ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(@"square.grid.2x2.fill",nil)); ABMCInstallPresentationLongPress(cell,self,key,ABMCDisplayTitle(key,[s name]),token,^{self->_specifiers=nil;[self reloadSpecifiers];}); } }
     return cell;
 }
-- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)path {
-    PSSpecifier *s=[self specifierAtIndexPath:path]; NSString *key=nil,*title=nil,*icon=nil;
-    if([s propertyForKey:@"selectedAction"]){
-        key=PresentationKeyForAction(_current);title=TitleForAction(_current);const ActionInfo *info=InfoForAction(_current);icon=info?info->icon:([_current hasPrefix:@"app:"]?[_current substringFromIndex:4]:([_current hasPrefix:@"shortcutid:"]?@"square.stack.3d.up.fill":@"hand.tap.fill"));
-    } else if([s propertyForKey:@"presentationKey"]){key=[s propertyForKey:@"presentationKey"];title=[s name];icon=[s propertyForKey:@"defaultIcon"];}
-    if(!key.length)return nil;
-    UIContextualAction *edit=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"修改" handler:^(__unused UIContextualAction *a,__unused UIView *v,void(^done)(BOOL)){ABMCShowPresentationEditor(self,key,title,icon,^{ self->_specifiers=nil; [self reloadSpecifiers]; done(YES); });}]; edit.backgroundColor=UIColor.systemBlueColor;
-    UIContextualAction *clear=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"清空" handler:^(__unused UIContextualAction *a,__unused UIView *v,void(^done)(BOOL)){ABMCClearPresentationOverride(key); self->_specifiers=nil; [self reloadSpecifiers]; done(YES);}]; clear.backgroundColor=UIColor.systemGrayColor;
-    return[UISwipeActionsConfiguration configurationWithActions:@[clear,edit]];
-}
+
 - (void)doubleTapSelected:(UITapGestureRecognizer *)gesture { if(gesture.state==UIGestureRecognizerStateRecognized)[self clearCurrentAction]; }
-- (void)clearCurrentAction { UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"清空已选动作" message:@"将把当前按键动作恢复为无操作，不会删除应用、指令或 URL。" preferredStyle:UIAlertControllerStyleAlert];[alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[alert addAction:[UIAlertAction actionWithTitle:@"清空" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a){CFPreferencesSetAppValue((__bridge CFStringRef)self->_key,CFSTR("none"),Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged"),NULL,NULL,YES);self->_current=@"none";self->_specifiers=nil;[self reloadSpecifiers];}]];[self presentViewController:alert animated:YES completion:nil]; }
+- (void)clearCurrentAction { CFPreferencesSetAppValue((__bridge CFStringRef)_key,CFSTR("none"),Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged"),NULL,NULL,YES);_current=@"none";_specifiers=nil;[self reloadSpecifiers]; }
+
 - (void)open:(PSSpecifier *)specifier { NSString *category=[specifier propertyForKey:@"category"]; UIViewController *controller=nil; if([category isEqualToString:@"builtin"])controller=[[ABMCBuiltinListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"app"])controller=[[ABMCApplicationListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"shortcut"])controller=[[ABMCShortcutListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"link"])controller=[[ABMCLinkListController alloc]initWithPreferenceKey:_key]; if(controller)[self.navigationController pushViewController:controller animated:YES]; }
 - (void)test:(PSSpecifier *)specifier { if(!_current.length||[_current isEqualToString:@"none"])return; CFPreferencesSetAppValue(CFSTR("testAction"),(__bridge CFPropertyListRef)_current,Domain); CFPreferencesAppSynchronize(Domain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),TestNotice,NULL,NULL,YES); }
 @end

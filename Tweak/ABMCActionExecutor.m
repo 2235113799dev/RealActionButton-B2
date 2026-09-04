@@ -1,5 +1,4 @@
 #import "ABMCActionExecutor.h"
-#import "ABMCShortcutPanelController.h"
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
@@ -11,9 +10,9 @@
 @interface ABMCActionExecutor ()
 - (void)openFullscreenURL:(NSURL *)url;
 - (void)openSavedLink:(NSString *)linkID;
-- (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen;
+- (void)openApp:(NSString *)bundleID;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
-- (void)showShortcutPanel:(NSString *)panelID;
+- (void)showActionPanel:(NSArray<NSString *> *)actions;
 - (void)runShortcut:(NSString *)name;
 - (void)showControlCenter;
 - (void)showNotificationCenter;
@@ -26,7 +25,6 @@ BOOL ABMCPerformingDefaultAction = NO;
     NSString *_doubleAction;
     NSString *_longPressAction;
     BOOL _useDirectFullscreenURLs;
-    BOOL _useFullscreenApps;
 }
 
 + (instancetype)sharedExecutor {
@@ -57,13 +55,9 @@ BOOL ABMCPerformingDefaultAction = NO;
         _doubleAction = dbl ? (__bridge_transfer NSString *)dbl : @"none";
         _longPressAction = longPress ? (__bridge_transfer NSString *)longPress : @"default";
 
-        NSArray *modeKeys = @[@"urlOpenMode", @"appOpenMode"];
-        BOOL *modeTargets[] = { &_useDirectFullscreenURLs, &_useFullscreenApps };
-        for (NSUInteger index = 0; index < modeKeys.count; index++) {
-            CFPropertyListRef mode = CFPreferencesCopyAppValue((__bridge CFStringRef)modeKeys[index], PREFS_DOMAIN);
-            *modeTargets[index] = (mode && CFGetTypeID(mode) == CFBooleanGetTypeID()) ? CFBooleanGetValue((CFBooleanRef)mode) : YES;
-            if (mode) CFRelease(mode);
-        }
+        CFPropertyListRef mode = CFPreferencesCopyAppValue(CFSTR("urlOpenMode"), PREFS_DOMAIN);
+        _useDirectFullscreenURLs = (mode && CFGetTypeID(mode) == CFBooleanGetTypeID()) ? CFBooleanGetValue((CFBooleanRef)mode) : YES;
+        if (mode) CFRelease(mode);
     }
 }
 
@@ -99,7 +93,7 @@ BOOL ABMCPerformingDefaultAction = NO;
     } else if ([actionID isEqualToString:@"flashlight"]) {
         [self toggleFlashlight];
     } else if ([actionID isEqualToString:@"camera"]) {
-        [self openApp:@"com.apple.camera" fullscreen:_useFullscreenApps];
+        [self openApp:@"com.apple.camera"];
     } else if ([actionID isEqualToString:@"silent"]) {
         [self toggleSilentMode];
     } else if ([actionID isEqualToString:@"screenshot"]) {
@@ -111,7 +105,7 @@ BOOL ABMCPerformingDefaultAction = NO;
     } else if ([actionID isEqualToString:@"notificationCenter"]) {
         [self showNotificationCenter];
     } else if ([actionID isEqualToString:@"settings"]) {
-        [self openApp:@"com.apple.Preferences" fullscreen:_useFullscreenApps];
+        [self openApp:@"com.apple.Preferences"];
     } else if ([actionID isEqualToString:@"respring"]) {
         [self respring];
     } else if ([actionID isEqualToString:@"wechatScan"]) {
@@ -123,8 +117,7 @@ BOOL ABMCPerformingDefaultAction = NO;
     } else if ([actionID isEqualToString:@"alipayPay"]) {
         [self openURLString:@"alipay://platformapi/startapp?appId=20000056"];
     } else if ([actionID hasPrefix:@"app:"]) {
-        BOOL fullscreen; @synchronized (self) { fullscreen = _useFullscreenApps; }
-        [self openApp:[actionID substringFromIndex:4] fullscreen:fullscreen];
+        [self openApp:[actionID substringFromIndex:4]];
     } else if ([actionID hasPrefix:@"url:"]) {
         [self openURLString:[actionID substringFromIndex:4]];
     } else if ([actionID hasPrefix:@"link:"]) {
@@ -133,8 +126,18 @@ BOOL ABMCPerformingDefaultAction = NO;
         NSString *payload = [actionID substringFromIndex:11];
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
         [self runShortcutIdentifier:parts.firstObject name:(parts.count > 1 ? parts[1] : @"")];
+    } else if ([actionID hasPrefix:@"actionpanel:"]) {
+        NSString *panelID=[actionID substringFromIndex:12];
+        CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("actionPanels"),PREFS_DOMAIN);
+        NSArray *actions=raw&&CFGetTypeID(raw)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)raw objectForKey:panelID]:nil;
+        if(raw)CFRelease(raw); [self showActionPanel:actions];
     } else if ([actionID hasPrefix:@"shortcutpanel:"]) {
-        [self showShortcutPanel:[actionID substringFromIndex:14]];
+        // Read-only migration for B10/B11 selections; never show the old custom grid.
+        CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("shortcutPanels"),PREFS_DOMAIN);
+        NSArray *items=raw&&CFGetTypeID(raw)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)raw objectForKey:[actionID substringFromIndex:14]]:nil;
+        if(raw)CFRelease(raw); NSMutableArray *actions=[NSMutableArray array];
+        for(NSDictionary *item in items)if([item isKindOfClass:NSDictionary.class]&&[item[@"identifier"] length])[actions addObject:[NSString stringWithFormat:@"shortcutid:%@|%@|%@|%@",item[@"identifier"],item[@"name"]?:@"快捷指令",item[@"glyph"]?:@0,item[@"color"]?:@0]];
+        [self showActionPanel:actions];
     } else if ([actionID hasPrefix:@"shortcut:"]) {
         [self runShortcut:[actionID substringFromIndex:9]];
     }
@@ -351,8 +354,8 @@ BOOL ABMCPerformingDefaultAction = NO;
 
 #pragma mark - Open App
 
-- (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen {
-    (void)fullscreen; // Both modes use the stable asynchronous app launcher.
+- (void)openApp:(NSString *)bundleID {
+    // Stable B2 system application-launch route.
     if (!bundleID.length) return;
     NSString *bid=[bundleID copy];
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -463,24 +466,23 @@ BOOL ABMCPerformingDefaultAction = NO;
     });
 }
 
-- (void)showShortcutPanel:(NSString *)panelID {
-    if (!panelID.length) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        CFPropertyListRef value=CFPreferencesCopyAppValue(CFSTR("shortcutPanels"),PREFS_DOMAIN);
-        NSArray *items=value&&CFGetTypeID(value)==CFDictionaryGetTypeID()?[(__bridge NSDictionary*)value objectForKey:panelID]:nil;
-        if(value)CFRelease(value); if(![items isKindOfClass:NSArray.class]||items.count<2)return;
-        NSArray *limited=[items subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,items.count))];
-        UIWindow *window=nil;
-        for(UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if(![scene isKindOfClass:UIWindowScene.class] || scene.activationState!=UISceneActivationStateForegroundActive) continue;
-            for(UIWindow *candidate in ((UIWindowScene *)scene).windows) if(candidate.isKeyWindow){window=candidate;break;}
-            if(window) break;
-        }
-        UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;
-        if(!host)return;
-        ABMCShortcutPanelController *panel=[[ABMCShortcutPanelController alloc]initWithItems:limited selection:^(NSDictionary *item){[self runShortcutIdentifier:item[@"identifier"] name:item[@"name"]];}];
-        [host presentViewController:panel animated:YES completion:nil];
-    });
+- (NSString *)nativePanelTitleForAction:(NSString *)action {
+    if([action hasPrefix:@"shortcutid:"]){NSArray *p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>1?p[1]:@"快捷指令";}
+    if([action hasPrefix:@"app:"])return [action substringFromIndex:4];
+    if([action hasPrefix:@"url:"])return [action substringFromIndex:4];
+    if([action hasPrefix:@"link:"])return @"URL";
+    NSDictionary *names=@{ @"default":@"系统默认",@"flashlight":@"手电筒",@"camera":@"相机",@"silent":@"静音切换",@"screenshot":@"截屏",@"lock":@"锁屏",@"controlCenter":@"控制中心",@"notificationCenter":@"通知中心",@"settings":@"打开设置",@"respring":@"重启界面",@"wechatScan":@"微信扫码",@"wechatPay":@"微信付款码",@"alipayScan":@"支付宝扫码",@"alipayPay":@"支付宝付款码"};return names[action] ?: @"动作";
+}
+- (void)showActionPanel:(NSArray<NSString *> *)actions {
+    NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id action in actions)if([action isKindOfClass:NSString.class]&&[action length]&&![action isEqualToString:@"none"])[unique addObject:action];NSArray *limited=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];if(!limited.count)return;
+    if(limited.count==1){[self executeAction:limited.firstObject];return;}
+    dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool { @try {
+        UIWindow *window=nil;for(UIScene *scene in UIApplication.sharedApplication.connectedScenes){if(![scene isKindOfClass:UIWindowScene.class]||scene.activationState!=UISceneActivationStateForegroundActive)continue;for(UIWindow *candidate in ((UIWindowScene *)scene).windows)if(candidate.isKeyWindow){window=candidate;break;}if(window)break;}
+        UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;if(!host)return;
+        UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@"选择动作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+        for(NSString *action in limited){NSString *title=[self nativePanelTitleForAction:action];[sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a){[self executeAction:action];}]];}
+        [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];UIPopoverPresentationController *popover=sheet.popoverPresentationController;if(popover){popover.sourceView=host.view;popover.sourceRect=host.view.bounds;}[host presentViewController:sheet animated:YES completion:nil];
+    } @catch(NSException *e){} } });
 }
 
 - (void)runShortcut:(NSString *)name {

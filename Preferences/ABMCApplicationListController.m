@@ -41,14 +41,16 @@
     [self reloadApplications];
 }
 
-- (void)clearCurrent:(UITapGestureRecognizer *)gesture { CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey,CFSTR("none"),Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),Changed,NULL,NULL,YES);[self.tableView reloadData]; }
-- (void)clearAll:(UITapGestureRecognizer *)gesture { for(NSString *key in @[@"singleClickAction",@"doubleClickAction",@"longPressAction"]){CFStringRef value=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)key,Domain);NSString *action=value?(__bridge_transfer NSString*)value:nil;if([action hasPrefix:@"app:"])CFPreferencesSetAppValue((__bridge CFStringRef)key,CFSTR("none"),Domain);}CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),Changed,NULL,NULL,YES);[self.tableView reloadData]; }
+- (void)clearCurrent:(UITapGestureRecognizer *)gesture { ABMCStoreSelectedActions(_preferenceKey,@[]);[self.tableView reloadData]; }
+- (void)clearAll:(UITapGestureRecognizer *)gesture { for(NSString *key in @[@"singleClickAction",@"doubleClickAction",@"longPressAction"]){NSMutableArray *items=[ABMCSelectedActions(key) mutableCopy];[items filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *a,NSDictionary *b){return ![a hasPrefix:@"app:"];}]];ABMCStoreSelectedActions(key,items);}[self.tableView reloadData]; }
 - (void)reloadApplications {
     NSMutableArray *items = [NSMutableArray array];
     for (id app in ABMCInstalledApplications()) {
         NSString *identifier = ABMCBundleIdentifierForApplication(app);
         NSString *name = ABMCDisplayNameForApplication(app);
-        if (identifier.length && name.length) [items addObject:@{ @"id": identifier, @"name": name, @"kind": @(ABMCApplicationKindForProxy(app)) }];
+        // A launchable app must expose a genuine SpringBoard icon. Service
+        // proxies render as the white blueprint in Settings and are excluded.
+        if (identifier.length && name.length && ABMCIconImageForProxy(app)) [items addObject:@{ @"id": identifier, @"name": name, @"kind": @(ABMCApplicationKindForProxy(app)) }];
     }
     _applications = [items sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
         return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];
@@ -79,23 +81,19 @@
     cell.detailTextLabel.font = [UIFont systemFontOfSize:14.0];
     cell.textLabel.text = ABMCDisplayTitle(presentationKey,item[@"name"]);
     cell.detailTextLabel.text = nil;
-    CFStringRef current = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, Domain);
-    cell.accessoryType = current && [(__bridge NSString *)current isEqualToString:[@"app:" stringByAppendingString:identifier]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    if (current) CFRelease(current);
+    NSString *action=[@"app:" stringByAppendingString:identifier];
+    cell.accessoryType=[ABMCSelectedActions(_preferenceKey) containsObject:action] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    ABMCInstallPresentationLongPress(cell,self,presentationKey,ABMCDisplayTitle(presentationKey,item[@"name"]),ABMCDisplayIconToken(presentationKey,identifier),^{ [self.tableView reloadData]; });
     return cell;
 }
-- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *item=self.visibleApplications[indexPath.row];NSString *identifier=item[@"id"],*key=[@"app." stringByAppendingString:identifier];
-    UIContextualAction *edit=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"修改" handler:^(__unused UIContextualAction*a,__unused UIView*v,void(^done)(BOOL)){ABMCShowPresentationEditor(self,key,item[@"name"],identifier,^{[self.tableView reloadData];done(YES);});}];edit.backgroundColor=UIColor.systemBlueColor;
-    UIContextualAction *clear=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"清空" handler:^(__unused UIContextualAction*a,__unused UIView*v,void(^done)(BOOL)){ABMCClearPresentationOverride(key);[self.tableView reloadData];done(YES);}];clear.backgroundColor=UIColor.systemGrayColor;
-    return [UISwipeActionsConfiguration configurationWithActions:@[clear,edit]];
-}
+
+
+- (void)showLimit { UIAlertController *a=[UIAlertController alertControllerWithTitle:@"最多 8 项" message:@"每个按键动作最多可选择 8 项。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];[self presentViewController:a animated:YES completion:nil]; }
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSString *action = [@"app:" stringByAppendingString:self.visibleApplications[indexPath.row][@"id"]];
-    CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey, (__bridge CFPropertyListRef)action, Domain);
-    CFPreferencesAppSynchronize(Domain);
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), Changed, NULL, NULL, YES);
-    [self.navigationController popViewControllerAnimated:YES];
+    NSString *action=[@"app:" stringByAppendingString:self.visibleApplications[indexPath.row][@"id"]]; NSMutableArray *chosen=[ABMCSelectedActions(_preferenceKey) mutableCopy];
+    if([chosen containsObject:action])[chosen removeObject:action]; else if(chosen.count<8)[chosen addObject:action]; else { [self showLimit]; return; }
+    ABMCStoreSelectedActions(_preferenceKey,chosen); [tableView reloadData];
 }
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)text { _query = [text copy] ?: @""; [self.tableView reloadData]; }
 @end

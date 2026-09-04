@@ -124,6 +124,47 @@ void ABMCShowPresentationEditor(UIViewController *controller, NSString *key, NSS
     [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) { NSString *title=[alert.textFields[0].text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]; NSString *icon=[alert.textFields[1].text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]; if(!title.length||title.length>100)return; NSMutableDictionary *all=[PresentationOverrides() mutableCopy]; all[key]=@{ @"title":title, @"icon":icon ?: @"" }; CFPreferencesSetAppValue(ABMCPresentationKey, (__bridge CFPropertyListRef)all, ABMCDomain); CFPreferencesAppSynchronize(ABMCDomain); if(completion)completion(); }]];
     [controller presentViewController:alert animated:YES completion:nil];
 }
+static void ABMCNotifyChanged(void) { CFPreferencesAppSynchronize(ABMCDomain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),CFSTR("com.huynguyen.actionbuttonmulticlick/prefsChanged"),NULL,NULL,YES); }
+static NSMutableDictionary *ABMCActionPanels(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("actionPanels"),ABMCDomain); NSMutableDictionary *r=v&&CFGetTypeID(v)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)v mutableCopy]:[NSMutableDictionary dictionary]; if(v)CFRelease(v); return r; }
+NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey) {
+    if(!preferenceKey.length)return @[]; CFStringRef raw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)preferenceKey,ABMCDomain); NSString *value=raw?(__bridge_transfer NSString *)raw:nil;
+    if([value hasPrefix:@"actionpanel:"]){ NSArray *items=ABMCActionPanels()[[value substringFromIndex:12]]; NSMutableArray *out=[NSMutableArray array]; for(id item in items)if([item isKindOfClass:NSString.class]&&[item length])[out addObject:item]; return out; }
+    if([value hasPrefix:@"shortcutpanel:"]){ CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("shortcutPanels"),ABMCDomain); NSArray *items=v&&CFGetTypeID(v)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)v objectForKey:[value substringFromIndex:14]]:nil;if(v)CFRelease(v);NSMutableArray*out=[NSMutableArray array];for(NSDictionary*i in items)if([i isKindOfClass:NSDictionary.class]&&[i[@"identifier"] length])[out addObject:[NSString stringWithFormat:@"shortcutid:%@|%@|%@|%@",i[@"identifier"],i[@"name"]?:@"快捷指令",i[@"glyph"]?:@0,i[@"color"]?:@0]];return out; }
+    return value.length&&! [value isEqualToString:@"none"] ? @[value] : @[];
+}
+void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *actions) {
+    if(!preferenceKey.length)return; NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id item in actions)if([item isKindOfClass:NSString.class]&&[item length])[unique addObject:item];NSArray *values=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];
+    CFStringRef oldRaw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)preferenceKey,ABMCDomain);NSString *old=oldRaw?(__bridge_transfer NSString *)oldRaw:nil;NSMutableDictionary *panels=ABMCActionPanels();if([old hasPrefix:@"actionpanel:"])[panels removeObjectForKey:[old substringFromIndex:12]];
+    if(!values.count){CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,CFSTR("none"),ABMCDomain);}else if(values.count==1){CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,(__bridge CFPropertyListRef)values.firstObject,ABMCDomain);}else{NSString *panelID=NSUUID.UUID.UUIDString;panels[panelID]=values;CFPreferencesSetAppValue((__bridge CFStringRef)preferenceKey,(__bridge CFPropertyListRef)[@"actionpanel:" stringByAppendingString:panelID],ABMCDomain);}
+    CFPreferencesSetAppValue(CFSTR("actionPanels"),(__bridge CFPropertyListRef)panels,ABMCDomain);ABMCNotifyChanged();
+}
+
+@interface ABMCPresentationLongPressTarget : NSObject
+@property (nonatomic, weak) UIViewController *controller;
+@property (nonatomic, copy) NSString *key, *title, *icon;
+@property (nonatomic, copy) dispatch_block_t completion;
+- (void)pressed:(UILongPressGestureRecognizer *)gesture;
+@end
+@implementation ABMCPresentationLongPressTarget
+- (void)pressed:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan || !self.controller || !self.key.length) return;
+    UIAlertController *sheet=[UIAlertController alertControllerWithTitle:self.title ?: @"显示外观" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"修改显示" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a){ ABMCShowPresentationEditor(self.controller,self.key,self.title,self.icon,self.completion); }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"清空显示" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a){ ABMCClearPresentationOverride(self.key); if(self.completion)self.completion(); }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    UIPopoverPresentationController *popover=sheet.popoverPresentationController;
+    if(popover){popover.sourceView=gesture.view;popover.sourceRect=gesture.view.bounds;}
+    [self.controller presentViewController:sheet animated:YES completion:nil];
+}
+@end
+void ABMCInstallPresentationLongPress(UITableViewCell *cell, UIViewController *controller, NSString *key, NSString *title, NSString *icon, dispatch_block_t completion) {
+    if (!cell || !key.length) return;
+    static const void *kTargetKey=&kTargetKey;
+    ABMCPresentationLongPressTarget *target=objc_getAssociatedObject(cell,kTargetKey);
+    if(!target){ target=[ABMCPresentationLongPressTarget new]; UIGestureRecognizer *gesture=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(pressed:)]; gesture.minimumPressDuration=0.45; gesture.cancelsTouchesInView=YES; [cell addGestureRecognizer:gesture]; objc_setAssociatedObject(cell,kTargetKey,target,OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+    target.controller=controller; target.key=key; target.title=title; target.icon=icon; target.completion=completion;
+}
+
 UIImage *ABMCIconImageForBundleID(NSString *identifier) {
     if (!identifier.length) return nil;
     static NSCache *cache;
@@ -169,7 +210,7 @@ UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor) {
 
 UIImage *ABMCWorkflowIconForIdentifier(NSString *identifier) {
     if (!identifier.length) return nil;
-    static NSCache *cache; static dispatch_once_t once; dispatch_once(&once, ^{ cache=[NSCache new]; cache.countLimit=300; });
+    static NSCache *cache; static dispatch_once_t once; dispatch_once(&once, ^{ cache=[NSCache new]; cache.countLimit=80; });
     UIImage *saved=[cache objectForKey:identifier]; if(saved)return saved;
     for(NSString *path in @[@"/private/var/mobile/Library/Shortcuts/Shortcuts.sqlite",@"/var/mobile/Library/Shortcuts/Shortcuts.sqlite"]) {
         sqlite3 *db=NULL; if(sqlite3_open_v2(path.fileSystemRepresentation,&db,SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX,NULL)!=SQLITE_OK){if(db)sqlite3_close(db);continue;}

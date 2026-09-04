@@ -104,7 +104,7 @@ static UIImage *IconForAction(NSString *action) {
 }
 
 
-- (void)doubleTapSelected:(UITapGestureRecognizer *)gesture { if(gesture.state==UIGestureRecognizerStateRecognized)[self clearCurrentAction]; }
+- (void)doubleTapSelected:(UITapGestureRecognizer *)gesture { if(gesture.state!=UIGestureRecognizerStateRecognized)return; UIView *view=gesture.view;while(view && ![view isKindOfClass:UITableViewCell.class])view=view.superview;NSIndexPath *path=view?[self.tableView indexPathForCell:(UITableViewCell *)view]:nil;PSSpecifier *specifier=path?[self specifierAtIndexPath:path]:nil;NSString *action=[specifier propertyForKey:@"actionID"];NSMutableArray *items=[ABMCSelectedActions(_key) mutableCopy];if(action.length)[items removeObject:action];else [items removeAllObjects];ABMCStoreSelectedActions(_key,items);_current=items.count?@"actionpanel":@"none";_specifiers=nil;[self reloadSpecifiers]; }
 - (void)clearCurrentAction { ABMCStoreSelectedActions(_key,@[]);_current=@"none";_specifiers=nil;[self reloadSpecifiers]; }
 
 - (void)open:(PSSpecifier *)specifier { NSString *category=[specifier propertyForKey:@"category"]; UIViewController *controller=nil; if([category isEqualToString:@"builtin"])controller=[[ABMCBuiltinListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"app"])controller=[[ABMCApplicationListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"shortcut"])controller=[[ABMCShortcutListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"link"])controller=[[ABMCLinkListController alloc]initWithPreferenceKey:_key]; if(controller)[self.navigationController pushViewController:controller animated:YES]; }

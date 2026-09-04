@@ -40,7 +40,6 @@ static NSString *TitleForAction(NSString *action) {
     const ActionInfo *info = InfoForAction(action);
     if (info) return info->title;
     if ([action hasPrefix:@"app:"]) return ABMCApplicationName([action substringFromIndex:4]);
-    if ([action hasPrefix:@"shortcutfolder:"]) return ABMCShortcutFolderTitle(action);
     if ([action hasPrefix:@"shortcutid:"]) { NSArray *p = [[action substringFromIndex:11] componentsSeparatedByString:@"|"]; return p.count > 1 ? p[1] : @"快捷指令"; }
     if ([action hasPrefix:@"actionpanel:"]) return @"已选动作组合";
     if ([action hasPrefix:@"shortcut:"]) return [action substringFromIndex:9];
@@ -50,7 +49,6 @@ static NSString *TitleForAction(NSString *action) {
 }
 static NSString *PresentationKeyForAction(NSString *action) {
     if ([action hasPrefix:@"app:"]) return [@"app." stringByAppendingString:[action substringFromIndex:4]];
-    if ([action hasPrefix:@"shortcutfolder:"]) return @"shortcut.folder";
     if ([action hasPrefix:@"shortcutid:"]) return [@"shortcut." stringByAppendingString:[[action substringFromIndex:11] componentsSeparatedByString:@"|"].firstObject ?: @""];
     if ([action hasPrefix:@"link:"]) return [@"link." stringByAppendingString:[action substringFromIndex:5]];
     return [@"action." stringByAppendingString:action ?: @"none"];
@@ -91,5 +89,5 @@ static UIImage *IconForAction(NSString *action) { return ABMCSelectedActionIcon(
 - (void)clearCurrentAction { ABMCStoreSelectedActions(_key,@[]);_current=@"none";_specifiers=nil;[self reloadSpecifiers]; }
 
 - (void)open:(PSSpecifier *)specifier { NSString *category=[specifier propertyForKey:@"category"]; UIViewController *controller=nil; if([category isEqualToString:@"builtin"])controller=[[ABMCBuiltinListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"app"])controller=[[ABMCApplicationListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"shortcut"])controller=[[ABMCShortcutListController alloc]initWithPreferenceKey:_key]; else if([category isEqualToString:@"link"])controller=[[ABMCLinkListController alloc]initWithPreferenceKey:_key]; if(controller)[self.navigationController pushViewController:controller animated:YES]; }
-- (void)test:(PSSpecifier *)specifier { if(!_current.length||[_current isEqualToString:@"none"])return; CFPreferencesSetAppValue(CFSTR("testAction"),(__bridge CFPropertyListRef)_current,Domain); CFPreferencesAppSynchronize(Domain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),TestNotice,NULL,NULL,YES); }
+- (void)test:(PSSpecifier *)specifier { if(!_current.length||[_current isEqualToString:@"none"]||[_current isEqualToString:@"default"])return; CFPreferencesSetAppValue(CFSTR("testAction"),(__bridge CFPropertyListRef)_current,Domain); CFPreferencesAppSynchronize(Domain); CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),TestNotice,NULL,NULL,YES); }
 @end

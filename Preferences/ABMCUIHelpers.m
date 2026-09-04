@@ -140,14 +140,9 @@ static NSString *ABMCBriefPresentationKey(NSString *action) {
     if([action hasPrefix:@"link:"]) return [@"link." stringByAppendingString:[action substringFromIndex:5]];
     return [@"action." stringByAppendingString:action ?: @"none"];
 }
-NSString *ABMCShortcutFolderTitle(NSString *action) {
-    if(![action hasPrefix:@"shortcutfolder:"]) return nil;
-    NSString *encoded=[action substringFromIndex:15];NSData *data=[[NSData alloc]initWithBase64EncodedString:encoded options:0];NSDictionary *record=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;NSString *title=[record isKindOfClass:NSDictionary.class]?record[@"title"]:nil;return [title isKindOfClass:NSString.class]&&title.length?title:@"快捷指令文件夹";
-}
 UIImage *ABMCSelectedActionIcon(NSString *action) {
     NSString *key=ABMCBriefPresentationKey(action),*fallback=nil;
-    if([action hasPrefix:@"shortcutfolder:"]) fallback=@"folder.fill";
-    else if([action hasPrefix:@"app:"]) fallback=[action substringFromIndex:4];
+    if([action hasPrefix:@"app:"]) fallback=[action substringFromIndex:4];
     else if([action hasPrefix:@"shortcutid:"]) fallback=@"square.stack.3d.up.fill";
     else if([action hasPrefix:@"link:"]){NSDictionary *record=ABMCLinkRecord([action substringFromIndex:5]);fallback=record[@"icon"] ?: @"link";}
     else if([action hasPrefix:@"url:"]) fallback=@"link";
@@ -155,7 +150,7 @@ UIImage *ABMCSelectedActionIcon(NSString *action) {
     id saved=PresentationOverrides()[key][@"icon"]; NSString *override=[saved isKindOfClass:NSString.class] && [saved length] ? saved : nil;
     if(override.length){UIImage *image=ABMCIconImageForBundleID(override) ?: ABMCTintedIcon(override,nil);if(image)return image;}
     if([action hasPrefix:@"shortcutid:"]){NSArray *parts=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];if(parts.count>3){UIImage *workflow=ABMCWorkflowIconImage([parts[2]integerValue],[parts[3]longLongValue]);if(workflow)return workflow;}}
-    return ABMCIconImageForBundleID(fallback) ?: ABMCTintedIcon(fallback,nil);
+    return ABMCTintedIcon(fallback,nil) ?: ABMCIconImageForBundleID(fallback);
 }
 
 

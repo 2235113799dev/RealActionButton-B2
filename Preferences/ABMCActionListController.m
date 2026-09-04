@@ -104,7 +104,15 @@ static UIImage *IconForAction(NSString *action) {
     return cell;
 }
 
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath { PSSpecifier *s=[self specifierAtIndexPath:indexPath]; if(![s propertyForKey:@"selectedAction"])return; NSTimeInterval now=NSDate.date.timeIntervalSinceReferenceDate; if(now-_lastSelectedTap<0.42){_lastSelectedTap=0;[self clearCurrentAction];}else _lastSelectedTap=now; }
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
+    // Link cells must keep PreferenceLoader's native target/action dispatch.
+    // Intercept only the non-navigating selected-action banner for double tap.
+    if(![specifier propertyForKey:@"selectedAction"]) { [super tableView:tableView didSelectRowAtIndexPath:indexPath]; return; }
+    NSTimeInterval now=NSDate.date.timeIntervalSinceReferenceDate;
+    if(now-_lastSelectedTap<0.42){ _lastSelectedTap=0; [self clearCurrentAction]; }
+    else _lastSelectedTap=now;
+}
 - (void)doubleTapSelected:(UITapGestureRecognizer *)gesture { if(gesture.state==UIGestureRecognizerStateRecognized)[self clearCurrentAction]; }
 - (void)clearCurrentAction { ABMCStoreSelectedActions(_key,@[]);_current=@"none";_specifiers=nil;[self reloadSpecifiers]; }
 

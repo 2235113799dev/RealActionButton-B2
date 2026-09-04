@@ -12,7 +12,7 @@ static NSString *ValidURL(NSString*v){v=[v stringByTrimmingCharactersInSet:NSCha
 - (void)load{_links=[NSMutableArray array];CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("savedLinks"),D);if(v&&CFGetTypeID(v)==CFArrayGetTypeID())for(NSDictionary*x in (__bridge NSArray*)v)if([x[@"id"] length]&&[x[@"title"] length]&&[x[@"url"] length])[_links addObject:[x mutableCopy]];if(v)CFRelease(v);}
 - (void)save{CFPreferencesSetAppValue(CFSTR("savedLinks"),(__bridge CFPropertyListRef)_links,D);CFPreferencesAppSynchronize(D);}
 
-- (NSArray*)visible{return!_query.length?_links:[_links filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary*x,NSDictionary*b){return[x[@"title"] localizedCaseInsensitiveContainsString:_query]||[x[@"url"] localizedCaseInsensitiveContainsString:_query];}]];}
+- (NSArray*)visible{NSArray *base=!_query.length?_links:[_links filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary*x,NSDictionary*b){return[x[@"title"] localizedCaseInsensitiveContainsString:_query]||[x[@"url"] localizedCaseInsensitiveContainsString:_query];}]];NSSet *selected=[NSSet setWithArray:ABMCSelectedActions(_key)];return[base filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary*x,NSDictionary*b){return ![selected containsObject:[@"link:" stringByAppendingString:x[@"id"]]];}]];}
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section { return ABMCCategoryActionSectionHeader(@"未选动作"); }
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section { return 24.0; }
 - (NSInteger)tableView:(UITableView*)t numberOfRowsInSection:(NSInteger)s{return self.visible.count;}

@@ -182,6 +182,8 @@ static UILabel *ABMCCategoryCaption(NSString *text, CGFloat width) {
     UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(ABMCCategoryInset,0,width-ABMCCategoryInset*2,ABMCCategoryCaptionHeight)];caption.autoresizingMask=UIViewAutoresizingFlexibleWidth;caption.text=text;caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];return caption;
 }
 UIView *ABMCCategoryActionSectionHeader(NSString *title) {
+    // Inset-grouped headers have a 20pt container inset; the shared caption's
+    // 20pt local inset makes both selected/unselected titles land at x=40pt.
     UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,1,ABMCCategoryCaptionHeight+ABMCCategoryCaptionToCard)];header.backgroundColor=UIColor.clearColor;[header addSubview:ABMCCategoryCaption(title,UIScreen.mainScreen.bounds.size.width)];return header;
 }
 @interface ABMCAlignedSearchBar : UISearchBar @end

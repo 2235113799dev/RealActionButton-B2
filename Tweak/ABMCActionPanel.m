@@ -10,9 +10,22 @@
 + (instancetype)_applicationIconImageForBundleIdentifier:(NSString *)identifier format:(int)format scale:(CGFloat)scale;
 @end
 
-@interface ABMCActionPanel () <UIGestureRecognizerDelegate>
+@class ABMCActionPanel;
+@interface ABMCActionPanel (BackdropActions)
+- (void)backgroundTapped:(id)sender;
+@end
+@interface ABMCPanelBackdrop : UIView
+@property(nonatomic,weak) ABMCActionPanel *owner;
+@property(nonatomic,weak) UIView *card;
+@end
+@implementation ABMCPanelBackdrop
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event { UIView *hit=[super hitTest:point withEvent:event];return (self.card&&hit&&[hit isDescendantOfView:self.card])?hit:self; }
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event { [self.owner backgroundTapped:nil]; }
+@end
+
+@interface ABMCActionPanel ()
 @property(nonatomic,strong) UIWindow *window;
-@property(nonatomic,weak) UIWindow *previousKeyWindow;
+@property(nonatomic,weak) UIWindow *hostWindow;
 @property(nonatomic,strong) UIView *card;
 @property(nonatomic,copy) NSArray<NSString *> *actions;
 @property(nonatomic,weak) ABMCActionExecutor *executor;
@@ -49,14 +62,14 @@ static UIImage *ABMCPanelIcon(NSString *action) {
 - (void)showActions:(NSArray<NSString *> *)actions executor:(ABMCActionExecutor *)executor {
     if(!actions.count)return;dispatch_async(dispatch_get_main_queue(),^{
         [self dismissAnimated:NO completion:^{[self.executor clearHardwareContext];}];self.actions=actions;self.executor=executor;
-        self.previousKeyWindow=ABMCPanelKeyWindow();UIWindowScene *scene=self.previousKeyWindow.windowScene;if(!scene){[self.executor clearHardwareContext];return;}UIWindow *window=[[UIWindow alloc]initWithWindowScene:scene];window.frame=scene.coordinateSpace.bounds;window.windowLevel=UIWindowLevelAlert+2;window.opaque=NO;window.backgroundColor=UIColor.clearColor;window.overrideUserInterfaceStyle=UIUserInterfaceStyleLight;UIViewController *root=[UIViewController new];root.overrideUserInterfaceStyle=UIUserInterfaceStyleLight;root.view.backgroundColor=UIColor.clearColor;window.rootViewController=root;self.window=window;[window makeKeyAndVisible];
-        UITapGestureRecognizer *outsideTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(backgroundTapped:)];outsideTap.delegate=self;outsideTap.cancelsTouchesInView=NO;[root.view addGestureRecognizer:outsideTap];
+        self.hostWindow=ABMCPanelKeyWindow();UIWindowScene *scene=self.hostWindow.windowScene;if(!scene){[self.executor clearHardwareContext];return;}UIWindow *window=[[UIWindow alloc]initWithWindowScene:scene];window.frame=scene.coordinateSpace.bounds;window.windowLevel=UIWindowLevelAlert+2;window.opaque=NO;window.backgroundColor=UIColor.clearColor;window.overrideUserInterfaceStyle=UIUserInterfaceStyleLight;UIViewController *root=[UIViewController new];root.overrideUserInterfaceStyle=UIUserInterfaceStyleLight;root.view.backgroundColor=UIColor.clearColor;window.rootViewController=root;self.window=window;[window makeKeyAndVisible];
+        ABMCPanelBackdrop *backdrop=[[ABMCPanelBackdrop alloc]initWithFrame:root.view.bounds];backdrop.owner=self;backdrop.backgroundColor=UIColor.clearColor;backdrop.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[root.view addSubview:backdrop];
         NSUInteger columns=MIN((NSUInteger)4,actions.count),rows=(actions.count+columns-1)/columns;
         CGFloat cardInset=8.0,padding=18.0,cellH=94.0,iconDiameter=62.0;
         CGFloat width=CGRectGetWidth(root.view.bounds)-cardInset*2,height=rows*cellH+padding*2;
         CGFloat top=MAX(54.0,window.safeAreaInsets.top+14.0);
         UIVisualEffectView *card=[[UIVisualEffectView alloc]initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialLight]];
-        card.frame=CGRectMake(cardInset,top,width,height);card.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleBottomMargin;card.layer.cornerRadius=34;card.clipsToBounds=YES;[root.view addSubview:card];self.card=card;
+        card.frame=CGRectMake(cardInset,top,width,height);card.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleBottomMargin;card.layer.cornerRadius=34;card.clipsToBounds=YES;[root.view addSubview:card];backdrop.card=card;self.card=card;
         CGFloat cellW=(width-padding*2)/columns;
         for(NSUInteger i=0;i<actions.count;i++){
             NSUInteger col=i%columns,row=i/columns;NSString *action=actions[i];
@@ -66,12 +79,11 @@ static UIImage *ABMCPanelIcon(NSString *action) {
             CGFloat iconSide=MIN(iconDiameter-12.0,ABMCPanelIconSize()+4.0);UIImageView *iconView=[[UIImageView alloc]initWithImage:ABMCPanelIcon(action)];iconView.frame=CGRectMake((iconDiameter-iconSide)*.5,(iconDiameter-iconSide)*.5,iconSide,iconSide);iconView.contentMode=UIViewContentModeScaleAspectFit;iconView.userInteractionEnabled=NO;if(artwork)iconView.layer.cornerRadius=8;iconView.clipsToBounds=YES;[button addSubview:iconView];[button addTarget:self action:@selector(actionTapped:) forControlEvents:UIControlEventTouchUpInside];[item addSubview:button];
             UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(0,67,cellW,27)];label.text=ABMCPanelTitle(action);label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont systemFontOfSize:16 weight:UIFontWeightRegular];label.textColor=UIColor.labelColor;label.numberOfLines=2;label.lineBreakMode=NSLineBreakByWordWrapping;[item addSubview:label];[card.contentView addSubview:item];
         }
-        UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(panned:)];[card addGestureRecognizer:pan];card.transform=CGAffineTransformMakeScale(.86,.86);card.alpha=0;[UIView animateWithDuration:.38 delay:0 usingSpringWithDamping:.82 initialSpringVelocity:.45 options:UIViewAnimationOptionCurveEaseOut animations:^{card.transform=CGAffineTransformIdentity;card.alpha=1;} completion:nil];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
+        UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(panned:)];[card addGestureRecognizer:pan];card.transform=CGAffineTransformConcat(CGAffineTransformMakeTranslation(0,-28),CGAffineTransformMakeScale(.92,.92));card.alpha=0;[UIView animateWithDuration:.36 delay:0 usingSpringWithDamping:.84 initialSpringVelocity:.42 options:UIViewAnimationOptionCurveEaseOut animations:^{card.transform=CGAffineTransformIdentity;card.alpha=1;} completion:nil];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
     });
 }
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch { return self.card && ![touch.view isDescendantOfView:self.card]; }
 - (void)backgroundTapped:(id)sender {[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];}
 - (void)panned:(UIPanGestureRecognizer *)gesture {CGPoint t=[gesture translationInView:self.card];if(gesture.state==UIGestureRecognizerStateChanged&&t.y<0){self.card.transform=CGAffineTransformMakeTranslation(0,t.y*.35);}if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled){if(t.y<-54)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];else [UIView animateWithDuration:.18 animations:^{self.card.transform=CGAffineTransformIdentity;}];}}
 - (void)actionTapped:(UIButton *)button {NSString *action=button.tag<self.actions.count?self.actions[button.tag]:nil;[self dismissAnimated:YES completion:^{[self.executor executeAction:action];[self.executor clearHardwareContext];}];}
-- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){window.hidden=YES;UIWindow *previous=self.previousKeyWindow;self.window=nil;self.card=nil;self.actions=nil;self.previousKeyWindow=nil;if(previous)[previous makeKeyWindow];if(completion)completion();};if(animated)[UIView animateWithDuration:.18 animations:^{card.transform=CGAffineTransformMakeScale(.78,.78);card.alpha=0;} completion:done];else done(YES);}
+- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){window.hidden=YES;UIWindow *host=self.hostWindow;self.window=nil;self.card=nil;self.actions=nil;self.hostWindow=nil;if(host)[host makeKeyWindow];if(completion)completion();};if(animated)[UIView animateWithDuration:.22 delay:0 options:UIViewAnimationOptionCurveEaseIn animations:^{card.transform=CGAffineTransformConcat(CGAffineTransformMakeTranslation(0,-22),CGAffineTransformMakeScale(.88,.88));card.alpha=0;} completion:done];else done(YES);}
 @end

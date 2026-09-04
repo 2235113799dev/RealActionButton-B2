@@ -60,7 +60,7 @@ static UIImage *IconForAction(NSString *action) { return ABMCSelectedActionIcon(
 @end
 @implementation ABMCActionListController { NSString *_key; NSString *_fallback; NSString *_current; }
 - (void)viewDidLoad { [super viewDidLoad]; ABMCPrewarmActionApplicationRecords(); PSSpecifier *p=self.specifier; _key=[[p propertyForKey:@"key"] copy]; _fallback=[[p propertyForKey:@"default"] copy]; self.title=[p name].length?[p name]:@"选择动作"; }
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain); _current=v?(__bridge_transfer NSString *)v:(_fallback?:@"none"); _specifiers=nil; [self reloadSpecifiers]; }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain);NSString *current=v?(__bridge_transfer NSString *)v:(_fallback?:@"none");if(![_current isEqualToString:current]){_current=current;_specifiers=nil;[self reloadSpecifiers];} }
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
     NSMutableArray *items=[NSMutableArray array];

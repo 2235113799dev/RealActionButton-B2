@@ -156,7 +156,8 @@ static NSString *ABMCBriefActionTitle(NSString *action) {
 static UIImage *ABMCBriefActionIcon(NSString *action) {
     if([action hasPrefix:@"app:"])return ABMCIconImageForBundleID([action substringFromIndex:4]) ?: ABMCTintedIcon(@"app.fill",nil);
     if([action hasPrefix:@"shortcutid:"]){NSArray*p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>3?ABMCWorkflowIconImage([p[2]integerValue],[p[3]longLongValue]) ?: ABMCTintedIcon(@"square.stack.3d.up.fill",nil):ABMCTintedIcon(@"square.stack.3d.up.fill",nil);}
-    if([action hasPrefix:@"link:"]||[action hasPrefix:@"url:"])return ABMCTintedIcon(@"link",nil);
+    if([action hasPrefix:@"link:"]){NSDictionary *record=ABMCLinkRecord([action substringFromIndex:5]);NSString *token=record[@"icon"];return ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(token,nil) ?: ABMCTintedIcon(@"link",nil);}
+    if([action hasPrefix:@"url:"])return ABMCTintedIcon(@"link",nil);
     NSDictionary *icons=@{ @"default":@"gearshape.fill",@"flashlight":@"flashlight.on.fill",@"camera":@"camera.fill",@"silent":@"bell.slash.fill",@"screenshot":@"viewfinder",@"lock":@"lock.fill",@"controlCenter":@"switch.2",@"notificationCenter":@"bell.fill",@"settings":@"gearshape.fill",@"respring":@"arrow.clockwise",@"wechatScan":@"qrcode.viewfinder",@"wechatPay":@"creditcard.fill",@"alipayScan":@"qrcode.viewfinder",@"alipayPay":@"creditcard.fill"};return ABMCTintedIcon(icons[action] ?: @"square.grid.2x2.fill",nil);
 }
 @interface ABMCSelectedRowTarget : NSObject
@@ -168,8 +169,11 @@ static UIImage *ABMCBriefActionIcon(NSString *action) {
 - (void)longPress:(UILongPressGestureRecognizer *)gesture { if(gesture.state!=UIGestureRecognizerStateBegan)return; NSString *action=self.action ?: @"none"; NSString *key=[action hasPrefix:@"app:"]?[@"app." stringByAppendingString:[action substringFromIndex:4]]:([action hasPrefix:@"shortcutid:"]?[@"shortcut." stringByAppendingString:[[action substringFromIndex:11] componentsSeparatedByString:@"|"].firstObject ?: @""] : ([action hasPrefix:@"link:"]?[@"link." stringByAppendingString:[action substringFromIndex:5]]:[@"action." stringByAppendingString:action])); ABMCShowPresentationEditor(self.controller,key,ABMCBriefActionTitle(action),@"hand.tap.fill",^{[self refresh];}); }
 - (void)doubleTap:(UITapGestureRecognizer *)gesture { if(gesture.state==UIGestureRecognizerStateRecognized){NSMutableArray *items=[ABMCSelectedActions(self.preferenceKey) mutableCopy];[items removeObject:self.action];ABMCStoreSelectedActions(self.preferenceKey,items);[self refresh];} }
 @end
+static NSDictionary *ABMCLinkRecord(NSString *identifier) { CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("savedLinks"),ABMCDomain);NSDictionary *result=nil;for(NSDictionary *item in (raw&&CFGetTypeID(raw)==CFArrayGetTypeID()?(__bridge NSArray *)raw:@[]))if([item[@"id"] isEqualToString:identifier]){result=[item copy];break;}if(raw)CFRelease(raw);return result; }
 UIView *ABMCSelectedActionsBanner(NSString *preferenceKey, UIViewController *controller) {
-    NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=44,top=26,height=top+count*row+12;UIView *box=[[UIView alloc]initWithFrame:CGRectMake(0,0,UIScreen.mainScreen.bounds.size.width,height)];
+    NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=44,top=26,height=top+count*row+12;
+    CGFloat width=controller.view.bounds.size.width; if(width<100) width=UIScreen.mainScreen.bounds.size.width;
+    UIView *box=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];box.autoresizingMask=UIViewAutoresizingFlexibleWidth;
     UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(20,2,240,20)];caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[box addSubview:caption];
     // Match the inset-grouped list card below instead of spanning wider.
     UIView *card=[[UIView alloc]initWithFrame:CGRectMake(20,top,box.bounds.size.width-40,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=15;[box addSubview:card];
@@ -214,15 +218,18 @@ UIImage *ABMCIconImageForBundleID(NSString *identifier) {
 }
 UIImage *ABMCIconImageForProxy(id application) { return ABMCIconImageForBundleID(ABMCBundleIdentifierForApplication(application)); }
 BOOL ABMCApplicationHasRealIcon(id application) {
-    if (!application || BoolCall(application,@"isPlaceholder") || BoolCall(application,@"isApplicationPlaceholder") || BoolCall(application,@"isHidden") || BoolCall(application,@"launchProhibited") || BoolCall(application,@"isLaunchProhibited")) return NO;
-    UIImage *icon=ABMCIconImageForProxy(application); if(!icon) return NO;
-    // LaunchServices returns the exact same generic white blueprint image for
-    // service proxies. Compare it once against a known non-launchable proxy;
-    // this avoids fragile name-only filtering and keeps real system apps.
-    static NSData *blueprint; static dispatch_once_t once;
-    dispatch_once(&once, ^{ UIImage *sample=ABMCIconImageForBundleID(@"com.apple.AccountAuthenticationDialog"); blueprint=sample?UIImagePNGRepresentation(sample):nil; });
-    NSData *data=UIImagePNGRepresentation(icon);
-    return !blueprint.length || ![data isEqualToData:blueprint];
+    NSString *identifier=ABMCBundleIdentifierForApplication(application);
+    if (!application || !identifier.length || BoolCall(application,@"isPlaceholder") || BoolCall(application,@"isApplicationPlaceholder") || BoolCall(application,@"isHidden") || BoolCall(application,@"launchProhibited") || BoolCall(application,@"isLaunchProhibited")) return NO;
+    static NSCache *results; static dispatch_once_t once;
+    dispatch_once(&once, ^{ results=[NSCache new]; results.countLimit=256; });
+    NSNumber *cached=[results objectForKey:identifier]; if(cached) return cached.boolValue;
+    UIImage *icon=ABMCIconImageForProxy(application); if(!icon){[results setObject:@NO forKey:identifier];return NO;}
+    // LaunchServices returns the generic white blueprint for service proxies.
+    // Compare only once per Bundle ID, then cache the boolean for all later opens.
+    static NSData *blueprint; static dispatch_once_t blueprintOnce;
+    dispatch_once(&blueprintOnce, ^{ UIImage *sample=ABMCIconImageForBundleID(@"com.apple.AccountAuthenticationDialog"); blueprint=sample?UIImagePNGRepresentation(sample):nil; });
+    BOOL real=!blueprint.length || ![UIImagePNGRepresentation(icon) isEqualToData:blueprint];
+    [results setObject:@(real) forKey:identifier]; return real;
 }
 
 UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor) {

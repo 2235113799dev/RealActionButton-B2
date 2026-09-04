@@ -6,16 +6,12 @@
 - (void)viewDidLoad{[super viewDidLoad];_query=@"";[self refreshHeader];self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(clearAll)];dispatch_async(dispatch_get_main_queue(), ^{ [self reloadApps]; });}
 - (void)clearAll{ABMCStoreSelectedActions(_key,@[]);[self refreshHeader];[self.tableView reloadData];}
 - (void)reloadApps {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{
-        @autoreleasepool {
-            NSMutableArray *out=[NSMutableArray array];
-            NSSet *blocked=[NSSet setWithArray:@[@"AccountAuthenticationDialog",@"AirDrop",@"AirPlayReceiver",@"AskToMessagesHost",@"BacklinkIndicator",@"CarPlaySetup",@"CarPlaySplashScreen",@"CarPlayWallpaper",@"CheckerBoard",@"CheckerBoardRemoteSetup",@"ContactPhotoCarouselRemoteAlert",@"CTCarrierSpaceAuth",@"DemoApp",@"EyeReliefUI",@"ReplayKitAngel",@"ScreenTimeUnlock",@"SleepLockScreen",@"SLYahooAuth",@"SpringBoardEducation",@"TrustMe",@"Web",@"WebContentAnalysisUI",@"WebSheet"]];
-            for(id proxy in ABMCInstalledApplications()){NSString *bid=ABMCBundleIdentifierForApplication(proxy),*name=ABMCDisplayNameForApplication(proxy);if(bid.length&&name.length&&![blocked containsObject:name])[out addObject:@{@"id":bid,@"name":name}];}
-            NSArray *ordered=[out sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];}];
-            NSMutableArray *sorted=[NSMutableArray array];NSMutableSet *seenNames=[NSMutableSet set];for(NSDictionary *item in ordered){NSString *name=[item[@"name"] lowercaseString];if(name.length && ![seenNames containsObject:name]){[seenNames addObject:name];[sorted addObject:item];}}
-            dispatch_async(dispatch_get_main_queue(), ^{ self->_apps=[sorted copy]; [self.tableView reloadData]; });
-        }
-    });
+    // LaunchServices proxies are not thread-safe on all iOS 17 builds. Use
+    // the cached main-thread snapshot; the controller itself was already shown.
+    NSMutableArray *out=[NSMutableArray array];
+    NSSet *blocked=[NSSet setWithArray:@[@"AccountAuthenticationDialog",@"AirDrop",@"AirPlayReceiver",@"AskToMessagesHost",@"BacklinkIndicator",@"CarPlaySetup",@"CarPlaySplashScreen",@"CarPlayWallpaper",@"CheckerBoard",@"CheckerBoardRemoteSetup",@"ContactPhotoCarouselRemoteAlert",@"CTCarrierSpaceAuth",@"DemoApp",@"EyeReliefUI",@"ReplayKitAngel",@"ScreenTimeUnlock",@"SleepLockScreen",@"SLYahooAuth",@"SpringBoardEducation",@"TrustMe",@"Web",@"WebContentAnalysisUI",@"WebSheet"]];
+    for(id proxy in ABMCInstalledApplications()){NSString *bid=ABMCBundleIdentifierForApplication(proxy),*name=ABMCDisplayNameForApplication(proxy);if(bid.length&&name.length&&ABMCApplicationHasRealIcon(proxy)&&![blocked containsObject:name])[out addObject:@{@"id":bid,@"name":name}];}
+    NSArray *ordered=[out sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];}];NSMutableArray *deduped=[NSMutableArray array];NSMutableSet *names=[NSMutableSet set];for(NSDictionary *item in ordered){NSString *name=[item[@"name"] lowercaseString];if(name.length&&![names containsObject:name]){[names addObject:name];[deduped addObject:item];}}_apps=[deduped copy];[self.tableView reloadData];
 }
 - (NSArray *)visible{return!_query.length?_apps:[_apps filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary*x,NSDictionary*b){return[x[@"name"] localizedCaseInsensitiveContainsString:_query]||[x[@"id"] localizedCaseInsensitiveContainsString:_query];}]];}
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return self.visible.count;}

@@ -36,6 +36,7 @@ static NSString *SavedURLTitle(NSString *identifier) {
     if (value) CFRelease(value);
     return title;
 }
+static NSString *SavedURLIcon(NSString *identifier) { CFPropertyListRef value=CFPreferencesCopyAppValue(LinksKey,Domain);NSString *icon=nil;if(value&&CFGetTypeID(value)==CFArrayGetTypeID())for(NSDictionary *item in (__bridge NSArray *)value)if([item[@"id"] isEqualToString:identifier]){icon=[item[@"icon"] copy];break;}if(value)CFRelease(value);return icon; }
 static NSString *TitleForAction(NSString *action) {
     const ActionInfo *info = InfoForAction(action);
     if (info) return info->title;
@@ -67,11 +68,11 @@ static UIImage *IconForAction(NSString *action) {
         UIImage *workflow=ABMCWorkflowIconForName([action substringFromIndex:9]);
         if(workflow)return workflow;
     }
-    NSString *fallback = info ? info->icon : ([action hasPrefix:@"app:"] ? [action substringFromIndex:4] : (([action hasPrefix:@"shortcutid:"] || [action hasPrefix:@"shortcut:"]) ? @"square.stack.3d.up.fill" : (([action hasPrefix:@"link:"] || [action hasPrefix:@"url:"]) ? @"link" : @"hand.tap.fill")));
+    NSString *fallback = info ? info->icon : ([action hasPrefix:@"app:"] ? [action substringFromIndex:4] : (([action hasPrefix:@"shortcutid:"] || [action hasPrefix:@"shortcut:"]) ? @"square.stack.3d.up.fill" : ([action hasPrefix:@"link:"] ? (SavedURLIcon([action substringFromIndex:5]) ?: @"link") : ([action hasPrefix:@"url:"] ? @"link" : @"hand.tap.fill"))));
     NSString *token = ABMCDisplayIconToken(PresentationKeyForAction(action), fallback);
     // Symbols must be resolved before application identifiers. The inverse
     // order returned UIKit's generic app blueprint for names like hand.tap.fill.
-    UIImage *image = ABMCTintedIcon(token, nil) ?: ABMCIconImageForBundleID(token);
+    UIImage *image = [action hasPrefix:@"link:"] ? (ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(token,nil)) : (ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token));
     return image ?: ABMCTintedIcon(@"hand.tap.fill", nil);
 }
 

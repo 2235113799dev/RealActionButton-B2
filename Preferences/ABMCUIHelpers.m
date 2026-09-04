@@ -181,8 +181,10 @@ UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *cont
     UIView *header=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];header.autoresizingMask=UIViewAutoresizingFlexibleWidth;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
     // UITableView's fixed overlay uses full-width coordinates. Keep the same
     // 20pt grouped margin as the native cards below for search and selection.
-    const CGFloat inset=20.0;
-    UISearchBar *search=[[UISearchBar alloc]initWithFrame:CGRectMake(inset,0,width-inset*2,56)];search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.placeholder=placeholder;search.delegate=(id<UISearchBarDelegate>)controller;[header addSubview:search];
+    const CGFloat inset=20.0,searchOuterInset=12.0;
+    // UISearchBar adds an 8pt internal field margin. A 12pt outer frame makes
+    // the visible rounded search field align exactly with 20pt grouped cards.
+    UISearchBar *search=[[UISearchBar alloc]initWithFrame:CGRectMake(searchOuterInset,0,width-searchOuterInset*2,56)];search.autoresizingMask=UIViewAutoresizingFlexibleWidth;search.placeholder=placeholder;search.delegate=(id<UISearchBarDelegate>)controller;[header addSubview:search];
     UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(inset,captionY,width-inset*2,18)];caption.autoresizingMask=UIViewAutoresizingFlexibleWidth;caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[header addSubview:caption];
     CGFloat cardWidth=width-inset*2;UIView *card=[[UIView alloc]initWithFrame:CGRectMake(inset,cardY,cardWidth,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=15;card.clipsToBounds=YES;[header addSubview:card];
     for(NSUInteger i=0;i<count;i++){NSString *action=items.count?items[i]:@"none";BOOL none=[action isEqualToString:@"none"];UIView *line=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,cardWidth,row)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.userInteractionEnabled=YES;[card addSubview:line];UIImage *raw=none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action);UIImageView *icon=[[UIImageView alloc]initWithImage:NormalizedIcon(raw) ?: raw];icon.frame=CGRectMake(20,5,34,34);icon.contentMode=UIViewContentModeScaleAspectFit;[line addSubview:icon];UILabel *title=[[UILabel alloc]initWithFrame:CGRectMake(64,0,cardWidth-74,row)];title.autoresizingMask=UIViewAutoresizingFlexibleWidth;title.text=none?@"无操作":ABMCCategoryActionTitle(action);title.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;title.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];[line addSubview:title];ABMCCategorySelectedTarget *target=[ABMCCategorySelectedTarget new];target.controller=controller;target.key=preferenceKey;target.action=action;UILongPressGestureRecognizer *hold=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];hold.minimumPressDuration=.45;[line addGestureRecognizer:hold];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[line addGestureRecognizer:doubleTap];objc_setAssociatedObject(line,@selector(ABMCCategoryActionHeader),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<count){UIView *separator=[[UIView alloc]initWithFrame:CGRectMake(64,row-.5,cardWidth-64,.5)];separator.autoresizingMask=UIViewAutoresizingFlexibleWidth;separator.backgroundColor=UIColor.separatorColor;[line addSubview:separator];}}
@@ -193,11 +195,12 @@ static UIView *ABMCStickyHeaderHost(UITableViewController *controller) { return 
 static CGRect ABMCStickyHeaderFrame(UITableViewController *controller, UIView *header) {
     UITableView *table=controller.tableView;UIView *host=ABMCStickyHeaderHost(controller);UINavigationBar *bar=controller.navigationController.navigationBar;
     CGRect tableFrame=[table.superview convertRect:table.frame toView:host];
-    // UITableViewController may extend its table behind the navigation bar, so
-    // tableFrame.origin.y is not the visible content start. The navigation bar
-    // bottom is the only stable anchor for “below the back button”.
-    CGFloat top=CGRectGetMinY(tableFrame);
-    if(bar.superview){CGRect navigationFrame=[bar.superview convertRect:bar.frame toView:host];top=CGRectGetMaxY(navigationFrame);}
+    // Resolve through window coordinates. Navigation bars can live inside a
+    // private transition container whose local frame starts at y=0; directly
+    // converting that frame produced the clipped header seen on device.
+    CGRect navigationInWindow=[bar convertRect:bar.bounds toView:nil];
+    CGRect navigationInHost=[host convertRect:navigationInWindow fromView:nil];
+    CGFloat top=bar.window?CGRectGetMaxY(navigationInHost):CGRectGetMinY(tableFrame);
     return CGRectMake(CGRectGetMinX(tableFrame),top,CGRectGetWidth(tableFrame),CGRectGetHeight(header.bounds));
 }
 void ABMCInstallStickyCategoryActionHeader(UITableViewController *controller, NSString *preferenceKey, NSString *placeholder) {

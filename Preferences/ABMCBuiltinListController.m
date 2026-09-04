@@ -5,7 +5,7 @@ static const ABMCBuiltinAction kActions[]={ {@"default",@"系统默认",@"gearsh
 @interface ABMCBuiltinListController ()<UISearchBarDelegate>@end
 @implementation ABMCBuiltinListController { NSString *_key,*_query; }
 - (instancetype)initWithPreferenceKey:(NSString *)key { if((self=[super initWithStyle:UITableViewStyleInsetGrouped])){_key=[key copy];self.title=@"基础动作";}return self; }
-- (void)viewDidLoad {[super viewDidLoad];_query=@"";self.tableView.rowHeight=44.0;self.tableView.estimatedRowHeight=44.0;[self refreshHeader];}
+- (void)viewDidLoad {[super viewDidLoad];_query=@"";self.tableView.rowHeight=44.0;self.tableView.estimatedRowHeight=44.0;}
 
 - (NSInteger)raw:(NSInteger)row {NSInteger n=0;for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++)if(!_query.length||[kActions[i].title localizedCaseInsensitiveContainsString:_query])if(n++==row)return i;return NSNotFound;}
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{NSInteger n=0;for(NSUInteger i=0;i<sizeof(kActions)/sizeof(kActions[0]);i++)if(!_query.length||[kActions[i].title localizedCaseInsensitiveContainsString:_query])n++;return n;}
@@ -13,6 +13,7 @@ static const ABMCBuiltinAction kActions[]={ {@"default",@"系统默认",@"gearsh
 - (void)refreshHeader { ABMCInstallStickyCategoryActionHeader(self,_key,@"搜索基础动作"); }
 
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)p{NSInteger i=[self raw:p.row];NSString*a=kActions[i].identifier;NSMutableArray*x=[ABMCSelectedActions(_key)mutableCopy];if([x containsObject:a])[x removeObject:a];else if(x.count<8)[x addObject:a];else return;ABMCStoreSelectedActions(_key,x);[self refreshHeader];[t reloadData];}
+- (void)viewDidAppear:(BOOL)animated { [super viewDidAppear:animated]; [self refreshHeader]; }
 - (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; ABMCUpdateStickyCategoryActionHeader(self); }
 - (void)viewDidDisappear:(BOOL)animated { [super viewDidDisappear:animated]; if(self.isMovingFromParentViewController || self.navigationController==nil) ABMCRemoveStickyCategoryActionHeader(self); }
 - (void)searchBar:(UISearchBar *)s textDidChange:(NSString *)text{_query=[text copy]?:@"";[self.tableView reloadData];}@end

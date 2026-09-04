@@ -22,6 +22,7 @@
 @end
 
 BOOL ABMCPerformingDefaultAction = NO;
+static NSMutableSet *ABMCActiveWorkflowRunners;
 
 @implementation ABMCActionExecutor {
     NSString *_singleAction;
@@ -41,6 +42,7 @@ BOOL ABMCPerformingDefaultAction = NO;
 
 - (instancetype)init {
     if (self = [super init]) {
+        static dispatch_once_t runnerOnce;dispatch_once(&runnerOnce, ^{ ABMCActiveWorkflowRunners=[NSMutableSet set]; });
         [self reloadPreferences];
     }
     return self;
@@ -453,7 +455,12 @@ BOOL ABMCPerformingDefaultAction = NO;
             if ([runnerClass instancesRespondToSelector:initializer]) {
                 id runner = ((id (*)(id, SEL, id))objc_msgSend)([runnerClass alloc], initializer, identifier);
                 if (runner && [runner respondsToSelector:start]) {
+                    // Some system runners begin asynchronously after start.
+                    // Keep the instance alive briefly; no retained third-party
+                    // object or injected framework is involved.
+                    @synchronized (ABMCActiveWorkflowRunners) { [ABMCActiveWorkflowRunners addObject:runner]; }
                     ((void (*)(id, SEL))objc_msgSend)(runner, start);
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(15*NSEC_PER_SEC)),dispatch_get_main_queue(),^{ @synchronized (ABMCActiveWorkflowRunners) { [ABMCActiveWorkflowRunners removeObject:runner]; } });
                     submitted = YES;
                 }
             }

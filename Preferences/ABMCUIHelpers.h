@@ -38,6 +38,12 @@ UIView *ABMCSelectedActionsBanner(NSString *preferenceKey, UIViewController *con
 CGFloat ABMCUnifiedIconSize(void);
 UIColor *ABMCUnifiedIconColor(void);
 NSString *ABMCUnifiedIconColorHex(void);
+CGFloat ABMCUnifiedTextSize(void);
+BOOL ABMCUsesUnifiedTextColor(void);
+UIColor *ABMCUnifiedTextColor(void);
+NSString *ABMCUnifiedTextColorHex(void);
+UIColor *ABMCActionTextColor(UIColor *fallback);
+void ABMCApplyActionTextStyle(UITableViewCell *cell, UIColor *fallback);
 UIImage *ABMCIconImage(NSString *token);
 UIImage *ABMCTintedIcon(NSString *token, UIColor *color);
 NSString *ABMCInferLinkIcon(NSString *urlString);

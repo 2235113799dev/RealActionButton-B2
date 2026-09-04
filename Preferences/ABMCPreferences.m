@@ -114,6 +114,8 @@ static NSString *titleForActionID(NSString *actionID) {
         [size setProperty:@"iconStyleSize" forKey:@"styleMode"]; [size setProperty:@"root.iconSize" forKey:@"presentationKey"]; [size setProperty:@"图标尺寸" forKey:@"defaultTitle"]; [size setProperty:@"arrow.up.left.and.arrow.down.right" forKey:@"defaultIcon"]; [size setProperty:ABMCTintedIcon(@"arrow.up.left.and.arrow.down.right", ABMCUnifiedIconColor()) forKey:@"iconImage"]; size->action=@selector(openIconStyle:); [specs addObject:size];
         PSSpecifier *color = [PSSpecifier preferenceSpecifierNamed:@"图标颜色" target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil];
         [color setProperty:@"iconStyleColor" forKey:@"styleMode"]; [color setProperty:@"root.iconColor" forKey:@"presentationKey"]; [color setProperty:@"图标颜色" forKey:@"defaultTitle"]; [color setProperty:@"paintpalette.fill" forKey:@"defaultIcon"]; [color setProperty:ABMCTintedIcon(@"paintpalette.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"]; color->action=@selector(openIconStyle:); [specs addObject:color];
+        PSSpecifier *textSize = [PSSpecifier preferenceSpecifierNamed:@"文字尺寸" target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil]; [textSize setProperty:@"textStyleSize" forKey:@"styleMode"]; [textSize setProperty:@"textformat.size" forKey:@"iconToken"]; textSize->action=@selector(openIconStyle:); [specs addObject:textSize];
+        PSSpecifier *textColor = [PSSpecifier preferenceSpecifierNamed:@"文字颜色" target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil]; [textColor setProperty:@"textStyleColor" forKey:@"styleMode"]; [textColor setProperty:@"textformat" forKey:@"iconToken"]; textColor->action=@selector(openIconStyle:); [specs addObject:textColor];
 
         PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"启动方式"];
         [launchGroup setProperty:@"URL 可选择直接全屏打开；应用恢复使用 B2 原有的稳定系统启动链。快捷指令通过系统后台运行器执行。" forKey:@"footerText"];
@@ -143,7 +145,7 @@ static NSString *titleForActionID(NSString *actionID) {
 }
 
 - (void)openIconStyle:(PSSpecifier *)specifier {
-    ABMCIconStyleMode mode=[[specifier propertyForKey:@"styleMode"] isEqualToString:@"iconStyleColor"] ? ABMCIconStyleModeColor : ABMCIconStyleModeSize;
+    ABMCIconStyleMode mode=[[specifier propertyForKey:@"styleMode"] isEqualToString:@"iconStyleColor"] ? ABMCIconStyleModeColor : ([[specifier propertyForKey:@"styleMode"] isEqualToString:@"textStyleSize"] ? ABMCIconStyleModeTextSize : ([[specifier propertyForKey:@"styleMode"] isEqualToString:@"textStyleColor"] ? ABMCIconStyleModeTextColor : ABMCIconStyleModeSize));
     [self.navigationController pushViewController:[[ABMCIconStyleController alloc] initWithMode:mode] animated:YES];
 }
 

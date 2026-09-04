@@ -78,7 +78,7 @@ static UIImage *IconForAction(NSString *action) {
 
 @interface ABMCActionListController ()
 @end
-@implementation ABMCActionListController { NSString *_key; NSString *_fallback; NSString *_current; NSTimeInterval _lastSelectedTap; }
+@implementation ABMCActionListController { NSString *_key; NSString *_fallback; NSString *_current; }
 - (void)viewDidLoad { [super viewDidLoad]; PSSpecifier *p=self.specifier; _key=[[p propertyForKey:@"key"] copy]; _fallback=[[p propertyForKey:@"default"] copy]; self.title=[p name].length?[p name]:@"选择动作"; }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; CFStringRef v=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_key,Domain); _current=v?(__bridge_transfer NSString *)v:(_fallback?:@"none"); _specifiers=nil; [self reloadSpecifiers]; }
 - (NSArray *)specifiers {
@@ -98,21 +98,13 @@ static UIImage *IconForAction(NSString *action) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell=[super tableView:tableView cellForRowAtIndexPath:indexPath]; PSSpecifier *s=[self specifierAtIndexPath:indexPath];
     cell.accessoryView=nil; cell.imageView.hidden=NO; cell.imageView.image=nil; cell.textLabel.textColor=UIColor.labelColor; cell.textLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];
-    if ([s propertyForKey:@"selectedAction"]) { ABMCApplyLargeIcon(cell, IconForAction(_current)); cell.textLabel.textColor=[_current isEqualToString:@"none"] ? UIColor.systemRedColor : UIColor.systemBlueColor; ABMCInstallPresentationLongPress(cell,self,PresentationKeyForAction(_current),DisplayedTitleForAction(_current),@"hand.tap.fill",^{self->_specifiers=nil;[self reloadSpecifiers];}); if(!objc_getAssociatedObject(cell,@selector(doubleTapSelected:))){UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(doubleTapSelected:)];tap.numberOfTapsRequired=2;[cell addGestureRecognizer:tap];objc_setAssociatedObject(cell,@selector(doubleTapSelected:),tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);} }
+    if ([s propertyForKey:@"selectedAction"]) { ABMCApplyLargeIcon(cell, IconForAction(_current)); cell.textLabel.textColor=[_current isEqualToString:@"none"] ? UIColor.systemRedColor : UIColor.systemBlueColor; ABMCInstallPresentationLongPress(cell,self,PresentationKeyForAction(_current),DisplayedTitleForAction(_current),@"hand.tap.fill",^{self->_specifiers=nil;[self reloadSpecifiers];}); if(!objc_getAssociatedObject(cell,@selector(doubleTapSelected:))){UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(doubleTapSelected:)];tap.numberOfTapsRequired=2;tap.cancelsTouchesInView=YES;tap.delaysTouchesEnded=YES;[cell.contentView addGestureRecognizer:tap];objc_setAssociatedObject(cell,@selector(doubleTapSelected:),tap,OBJC_ASSOCIATION_RETAIN_NONATOMIC);} }
     else if ([[s propertyForKey:@"iconToken"] length]) { ABMCApplyLargeIcon(cell, ABMCTintedIcon([s propertyForKey:@"iconToken"], nil)); }
     else { NSString *key=[s propertyForKey:@"presentationKey"],*fallback=[s propertyForKey:@"defaultIcon"]; if (fallback.length) { NSString *token=ABMCDisplayIconToken(key,fallback); ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(@"square.grid.2x2.fill",nil)); ABMCInstallPresentationLongPress(cell,self,key,ABMCDisplayTitle(key,[s name]),token,^{self->_specifiers=nil;[self reloadSpecifiers];}); } }
     return cell;
 }
 
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
-    // Link cells must keep PreferenceLoader's native target/action dispatch.
-    // Intercept only the non-navigating selected-action banner for double tap.
-    if(![specifier propertyForKey:@"selectedAction"]) { [super tableView:tableView didSelectRowAtIndexPath:indexPath]; return; }
-    NSTimeInterval now=NSDate.date.timeIntervalSinceReferenceDate;
-    if(now-_lastSelectedTap<0.42){ _lastSelectedTap=0; [self clearCurrentAction]; }
-    else _lastSelectedTap=now;
-}
+
 - (void)doubleTapSelected:(UITapGestureRecognizer *)gesture { if(gesture.state==UIGestureRecognizerStateRecognized)[self clearCurrentAction]; }
 - (void)clearCurrentAction { ABMCStoreSelectedActions(_key,@[]);_current=@"none";_specifiers=nil;[self reloadSpecifiers]; }
 

@@ -483,13 +483,15 @@ BOOL ABMCPerformingDefaultAction = NO;
 - (void)showActionPanel:(NSArray<NSString *> *)actions {
     NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id action in actions)if([action isKindOfClass:NSString.class]&&[action length]&&![action isEqualToString:@"none"])[unique addObject:action];NSArray *limited=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];if(!limited.count)return;if(limited.count==1){[self executeAction:limited.firstObject];return;}
     dispatch_async(dispatch_get_main_queue(), ^{ @autoreleasepool { @try {
-        UIWindow *window=nil;for(UIScene *scene in UIApplication.sharedApplication.connectedScenes){if(![scene isKindOfClass:UIWindowScene.class]||scene.activationState!=UISceneActivationStateForegroundActive)continue;for(UIWindow *candidate in ((UIWindowScene *)scene).windows)if(candidate.isKeyWindow){window=candidate;break;}if(window)break;}UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;if(!host)return;
-        NSMutableArray *children=[NSMutableArray array];for(NSString *action in limited){UIAction *item=[UIAction actionWithTitle:[self nativePanelTitleForAction:action] image:[self nativePanelIconForAction:action] identifier:nil handler:^(__kindof UIAction *x){[self executeAction:action];}];[children addObject:item];}
-        // UIKit's native menu rows are the system folder-style banner list and support image + title.
-        UIMenu *menu=[UIMenu menuWithTitle:@"选择动作" children:children];UIButton *anchor=[UIButton buttonWithType:UIButtonTypeSystem];anchor.frame=CGRectMake(CGRectGetMidX(host.view.bounds)-1,CGRectGetMaxY(host.view.bounds)-2,2,2);anchor.alpha=0.01;anchor.menu=menu;anchor.showsMenuAsPrimaryAction=YES;[host.view addSubview:anchor];[anchor sendActionsForControlEvents:UIControlEventTouchUpInside];dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[anchor removeFromSuperview];});
+        UIWindow *window=nil;for(UIScene *scene in UIApplication.sharedApplication.connectedScenes){if(![scene isKindOfClass:UIWindowScene.class]||scene.activationState!=UISceneActivationStateForegroundActive)continue;for(UIWindow *candidate in ((UIWindowScene *)scene).windows)if(candidate.isKeyWindow){window=candidate;break;}if(window)break;}
+        UIViewController *host=window.rootViewController;while(host.presentedViewController)host=host.presentedViewController;if(!host)return;
+        UIAlertController *panel=[UIAlertController alertControllerWithTitle:@"选择动作" message:@"请选择要执行的动作" preferredStyle:UIAlertControllerStyleActionSheet];
+        for(NSString *action in limited){[panel addAction:[UIAlertAction actionWithTitle:[self nativePanelTitleForAction:action] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *choice){[self executeAction:action];}]];}
+        [panel addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+        UIPopoverPresentationController *popover=panel.popoverPresentationController;if(popover){popover.sourceView=host.view;popover.sourceRect=CGRectMake(CGRectGetMidX(host.view.bounds),CGRectGetMaxY(host.view.bounds),1,1);}
+        [host presentViewController:panel animated:YES completion:nil];
     } @catch(NSException *e){} } });
 }
-
 - (void)runShortcut:(NSString *)name {
     if (!name.length) return;
     NSString *encoded = [name stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];

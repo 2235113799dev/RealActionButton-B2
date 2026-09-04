@@ -153,6 +153,7 @@ static NSString *ABMCBriefActionTitle(NSString *action) {
     if([action hasPrefix:@"url:"])return [action substringFromIndex:4];
     NSDictionary *n=@{ @"default":@"系统默认",@"flashlight":@"手电筒",@"camera":@"相机",@"silent":@"静音切换",@"screenshot":@"截屏",@"lock":@"锁屏",@"controlCenter":@"控制中心",@"notificationCenter":@"通知中心",@"settings":@"设置",@"respring":@"重启",@"wechatScan":@"微信扫码",@"wechatPay":@"微信付款码",@"alipayScan":@"支付宝扫码",@"alipayPay":@"支付宝付款码"};return n[action] ?: @"动作";
 }
+static NSDictionary *ABMCLinkRecord(NSString *identifier);
 static UIImage *ABMCBriefActionIcon(NSString *action) {
     if([action hasPrefix:@"app:"])return ABMCIconImageForBundleID([action substringFromIndex:4]) ?: ABMCTintedIcon(@"app.fill",nil);
     if([action hasPrefix:@"shortcutid:"]){NSArray*p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>3?ABMCWorkflowIconImage([p[2]integerValue],[p[3]longLongValue]) ?: ABMCTintedIcon(@"square.stack.3d.up.fill",nil):ABMCTintedIcon(@"square.stack.3d.up.fill",nil);}

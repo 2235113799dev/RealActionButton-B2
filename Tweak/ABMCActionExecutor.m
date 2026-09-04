@@ -83,12 +83,10 @@ BOOL ABMCPerformingDefaultAction = NO;
     [self executeAction:action];
 }
 
+- (BOOL)usesNativeLongPressAction { @synchronized(self) { return !_longPressAction || [_longPressAction isEqualToString:@"default"]; } }
 - (BOOL)executeConfiguredLongPressAction {
     NSString *longPressAction;
-    @synchronized (self) {
-        longPressAction = [_longPressAction copy];
-    }
-    // "default" preserves SpringBoard's untouched native long-press path.
+    @synchronized (self) { longPressAction = [_longPressAction copy]; }
     if (!longPressAction || [longPressAction isEqualToString:@"default"]) return NO;
     [self executeAction:longPressAction];
     return YES;
@@ -374,11 +372,13 @@ BOOL ABMCPerformingDefaultAction = NO;
         // Enter the same handler used by an actual finger tap. This preserves
         // FV's SBIconView interception point; direct workspace/manager launch
         // calls bypass that hook and force an ordinary full-screen launch.
+        // Let SpringBoard's icon controller perform the icon launch first.
+        // This is the same dispatcher reached from a Home Screen tap and is
+        // the stable interception point used by split-view tweaks.
+        SEL launch=NSSelectorFromString(@"launchIcon:");
+        if(icon&&[controller respondsToSelector:launch]) { ((void(*)(id,SEL,id))objc_msgSend)(controller,launch,icon); return YES; }
         SEL tap = NSSelectorFromString(@"_handleTap");
-        if (iconView && [iconView respondsToSelector:tap]) {
-            ((void (*)(id, SEL))objc_msgSend)(iconView, tap);
-            return YES;
-        }
+        if (iconView && [iconView respondsToSelector:tap]) { ((void (*)(id, SEL))objc_msgSend)(iconView, tap); return YES; }
     } @catch (NSException *exception) {}
     return NO;
 }

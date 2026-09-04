@@ -204,8 +204,14 @@ static NSString *titleForActionID(NSString *actionID) {
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
-    // Icons are fixed in each specifier's iconImage at construction time.
-    // Do not touch imageView/accessoryView here: PSSwitchCell owns its layout.
+    // Re-apply the single global canvas for root PSLinkCell and PSSwitchCell
+    // icons. Specifier construction otherwise leaves root rows at UIKit's
+    // default image metrics while subpages use ABMCApplyLargeIcon.
+    PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
+    NSString *token=[specifier propertyForKey:@"iconToken"];
+    UIImage *fixed=[specifier propertyForKey:@"iconImage"];
+    if(token.length) ABMCApplyLargeIcon(cell,ABMCTintedIcon(token,nil));
+    else if([fixed isKindOfClass:UIImage.class]) ABMCApplyLargeIcon(cell,fixed);
     return cell;
 }
 

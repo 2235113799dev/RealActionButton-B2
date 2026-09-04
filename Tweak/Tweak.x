@@ -42,6 +42,9 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
     if (ABMCPerformingDefaultAction) { %orig; return; }
     [ABMCActionExecutor sharedExecutor].buttonInstance = self;
     [ABMCActionExecutor sharedExecutor].lastDownEvent = event;
+    // Only the native long-press configuration enters SpringBoard's genuine
+    // down-state machine. Custom single/double actions remain intercepted.
+    if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) %orig;
 }
 
 - (void)performActionsForButtonUp:(id)event {
@@ -62,14 +65,9 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
     longPressActive = YES;
     [[ABMCClickManager sharedManager] cancelPendingClicks];
     longPressUsesNativeAction = ![[ABMCActionExecutor sharedExecutor] executeConfiguredLongPressAction];
-    if (!longPressUsesNativeAction) return;
-    ABMCPerformingDefaultAction = YES;
-    @try {
-        ((void (*)(id, SEL, id))objc_msgSend)(self, @selector(performActionsForButtonDown:), [ABMCActionExecutor sharedExecutor].lastDownEvent);
-        %orig;
-    } @finally {
-        ABMCPerformingDefaultAction = NO;
-    }
+    // Default must retain the exact hardware event/state machine. Replaying a
+    // synthetic buttonDown here leaves Action Button's native panel inert.
+    if (longPressUsesNativeAction) %orig;
 }
 
 %end
@@ -86,6 +84,9 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
     if (ABMCPerformingDefaultAction) { %orig; return; }
     [ABMCActionExecutor sharedExecutor].buttonInstance = self;
     [ABMCActionExecutor sharedExecutor].lastDownEvent = event;
+    // Only the native long-press configuration enters SpringBoard's genuine
+    // down-state machine. Custom single/double actions remain intercepted.
+    if ([[ABMCActionExecutor sharedExecutor] usesNativeLongPressAction]) %orig;
 }
 
 - (void)performActionsForButtonUp:(id)event {
@@ -106,14 +107,9 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
     longPressActive = YES;
     [[ABMCClickManager sharedManager] cancelPendingClicks];
     longPressUsesNativeAction = ![[ABMCActionExecutor sharedExecutor] executeConfiguredLongPressAction];
-    if (!longPressUsesNativeAction) return;
-    ABMCPerformingDefaultAction = YES;
-    @try {
-        ((void (*)(id, SEL, id))objc_msgSend)(self, @selector(performActionsForButtonDown:), [ABMCActionExecutor sharedExecutor].lastDownEvent);
-        %orig;
-    } @finally {
-        ABMCPerformingDefaultAction = NO;
-    }
+    // Default must retain the exact hardware event/state machine. Replaying a
+    // synthetic buttonDown here leaves Action Button's native panel inert.
+    if (longPressUsesNativeAction) %orig;
 }
 
 %end

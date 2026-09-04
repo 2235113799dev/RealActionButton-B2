@@ -10,6 +10,7 @@ extern BOOL ABMCPerformingDefaultAction;
 + (instancetype)sharedExecutor;
 - (void)executeActionForClickType:(NSInteger)clickType;
 - (BOOL)executeConfiguredLongPressAction;
+- (BOOL)usesNativeLongPressAction;
 - (void)executeAction:(NSString *)actionID;
 - (void)reloadPreferences;
 

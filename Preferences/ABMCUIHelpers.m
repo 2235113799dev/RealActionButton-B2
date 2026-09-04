@@ -85,9 +85,6 @@ NSArray *ABMCInstalledApplications(void) {
 #define ABMCPresentationKey CFSTR("presentationOverrides")
 #define ABMCUnifiedPointSizeKey CFSTR("unifiedIconSize")
 #define ABMCUnifiedColorKey CFSTR("unifiedIconColor")
-#define ABMCUnifiedTextSizeKey CFSTR("unifiedTextSize")
-#define ABMCUnifiedTextColorEnabledKey CFSTR("unifiedTextColorEnabled")
-#define ABMCUnifiedTextColorKey CFSTR("unifiedTextColor")
 
 CGFloat ABMCUnifiedIconSize(void) {
     CFPropertyListRef value=CFPreferencesCopyAppValue(ABMCUnifiedPointSizeKey,ABMCDomain);
@@ -97,12 +94,6 @@ CGFloat ABMCUnifiedIconSize(void) {
 static UIColor *ColorForHex(NSString *text) { NSString*s=[[text ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]uppercaseString];if([s hasPrefix:@"#"])s=[s substringFromIndex:1];unsigned n=0;NSScanner*scan=[NSScanner scannerWithString:s];if(s.length!=6||![scan scanHexInt:&n]||!scan.isAtEnd)return nil;return[UIColor colorWithRed:((n>>16)&255)/255.0 green:((n>>8)&255)/255.0 blue:(n&255)/255.0 alpha:1]; }
 UIColor *ABMCUnifiedIconColor(void) { CFPropertyListRef value=CFPreferencesCopyAppValue(ABMCUnifiedColorKey,ABMCDomain);UIColor*color=ColorForHex(value&&CFGetTypeID(value)==CFStringGetTypeID()?(__bridge NSString*)value:nil)?:UIColor.systemBlueColor;if(value)CFRelease(value);return color; }
 NSString *ABMCUnifiedIconColorHex(void) { UIColor*c=ABMCUnifiedIconColor();CGFloat r=0,g=0,b=0,a=0;if(![c getRed:&r green:&g blue:&b alpha:&a])return @"#007AFF";return[NSString stringWithFormat:@"#%02lX%02lX%02lX",lround(r*255),lround(g*255),lround(b*255)]; }
-CGFloat ABMCUnifiedTextSize(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(ABMCUnifiedTextSizeKey,ABMCDomain);CGFloat size=v&&CFGetTypeID(v)==CFNumberGetTypeID()?[(__bridge NSNumber *)v doubleValue]:18.0;if(v)CFRelease(v);return MIN(28.0,MAX(14.0,size)); }
-BOOL ABMCUsesUnifiedTextColor(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(ABMCUnifiedTextColorEnabledKey,ABMCDomain);BOOL enabled=v&&CFGetTypeID(v)==CFBooleanGetTypeID()&&CFBooleanGetValue((CFBooleanRef)v);if(v)CFRelease(v);return enabled; }
-UIColor *ABMCUnifiedTextColor(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(ABMCUnifiedTextColorKey,ABMCDomain);UIColor *c=ColorForHex(v&&CFGetTypeID(v)==CFStringGetTypeID()?(__bridge NSString *)v:nil) ?: UIColor.labelColor;if(v)CFRelease(v);return c; }
-NSString *ABMCUnifiedTextColorHex(void) { UIColor*c=ABMCUnifiedTextColor();CGFloat r=0,g=0,b=0,a=0;if(![c getRed:&r green:&g blue:&b alpha:&a])return @"#000000";return[NSString stringWithFormat:@"#%02lX%02lX%02lX",lround(r*255),lround(g*255),lround(b*255)]; }
-UIColor *ABMCActionTextColor(UIColor *fallback) { return ABMCUsesUnifiedTextColor() ? ABMCUnifiedTextColor() : (fallback ?: UIColor.labelColor); }
-void ABMCApplyActionTextStyle(UITableViewCell *cell, UIColor *fallback) { if(!cell)return;cell.textLabel.font=[UIFont systemFontOfSize:ABMCUnifiedTextSize() weight:UIFontWeightRegular];cell.textLabel.textColor=ABMCActionTextColor(fallback); }
 static UIImage *NormalizedIcon(UIImage *image) {
     if (!image || ![image isKindOfClass:UIImage.class]) return nil;
     CGFloat maximum=ABMCUnifiedIconSize(),canvas=maximum+4.0; CGSize size=image.size;
@@ -156,6 +147,7 @@ void ABMCStoreSelectedActions(NSString *preferenceKey, NSArray<NSString *> *acti
 }
 
 static NSString *ABMCBriefActionTitle(NSString *action) {
+    if([action hasPrefix:@"shortcutfolder:"])return ABMCShortcutFolderTitle(action);
     if([action hasPrefix:@"shortcutid:"]){NSArray *p=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];return p.count>1?p[1]:@"快捷指令";}
     if([action hasPrefix:@"app:"])return ABMCApplicationName([action substringFromIndex:4]) ?: @"应用";
     if([action hasPrefix:@"link:"]){CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("savedLinks"),ABMCDomain);NSString *title=nil;for(NSDictionary*x in (v&&CFGetTypeID(v)==CFArrayGetTypeID()?(__bridge NSArray*)v:@[]))if([x[@"id"]isEqual:[action substringFromIndex:5]]){title=x[@"title"];break;}if(v)CFRelease(v);return title ?: @"URL";}
@@ -173,15 +165,21 @@ static const CGFloat kABMCPrimaryIconCanvas = 34.0;
 static const CGFloat kABMCPrimaryIconCanvasX = 20.0;
 static const CGFloat kABMCPrimaryTitleX = 64.0;
 static const CGFloat kABMCPrimaryRowHeight = 44.0;
+static const CGFloat kABMCPrimaryTextSize = 18.0;
 static NSString *ABMCBriefPresentationKey(NSString *action) {
     if([action hasPrefix:@"app:"]) return [@"app." stringByAppendingString:[action substringFromIndex:4]];
     if([action hasPrefix:@"shortcutid:"]) return [@"shortcut." stringByAppendingString:[[action substringFromIndex:11] componentsSeparatedByString:@"|"].firstObject ?: @""];
     if([action hasPrefix:@"link:"]) return [@"link." stringByAppendingString:[action substringFromIndex:5]];
     return [@"action." stringByAppendingString:action ?: @"none"];
 }
+NSString *ABMCShortcutFolderTitle(NSString *action) {
+    if(![action hasPrefix:@"shortcutfolder:"]) return nil;
+    NSString *encoded=[action substringFromIndex:15];NSData *data=[[NSData alloc]initWithBase64EncodedString:encoded options:0];NSDictionary *record=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;NSString *title=[record isKindOfClass:NSDictionary.class]?record[@"title"]:nil;return [title isKindOfClass:NSString.class]&&title.length?title:@"快捷指令文件夹";
+}
 UIImage *ABMCSelectedActionIcon(NSString *action) {
     NSString *key=ABMCBriefPresentationKey(action),*fallback=nil;
-    if([action hasPrefix:@"app:"]) fallback=[action substringFromIndex:4];
+    if([action hasPrefix:@"shortcutfolder:"]) fallback=@"folder.fill";
+    else if([action hasPrefix:@"app:"]) fallback=[action substringFromIndex:4];
     else if([action hasPrefix:@"shortcutid:"]) fallback=@"square.stack.3d.up.fill";
     else if([action hasPrefix:@"link:"]){NSDictionary *record=ABMCLinkRecord([action substringFromIndex:5]);fallback=record[@"icon"] ?: @"link";}
     else if([action hasPrefix:@"url:"]) fallback=@"link";
@@ -204,15 +202,11 @@ UIImage *ABMCSelectedActionIcon(NSString *action) {
 static NSDictionary *ABMCLinkRecord(NSString *identifier) { CFPropertyListRef raw=CFPreferencesCopyAppValue(CFSTR("savedLinks"),ABMCDomain);NSDictionary *result=nil;for(NSDictionary *item in (raw&&CFGetTypeID(raw)==CFArrayGetTypeID()?(__bridge NSArray *)raw:@[]))if([item[@"id"] isEqualToString:identifier]){result=[item copy];break;}if(raw)CFRelease(raw);return result; }
 UIView *ABMCSelectedActionsBanner(NSString *preferenceKey, UIViewController *controller) {
     NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=kABMCPrimaryRowHeight,top=26,height=top+count*row+12;
-    // tableHeaderView is not constrained to its table. Build from the real table
-    // width, never the wider controller view, otherwise the right card edge
-    // can overflow on compact Settings layouts.
-    UITableView *table=[controller isKindOfClass:UITableViewController.class] ? ((UITableViewController *)controller).tableView : nil;
-    CGFloat width=table.bounds.size.width; if(width<100) width=controller.view.bounds.size.width; if(width<100) width=UIScreen.mainScreen.bounds.size.width;
-    UIView *box=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];box.autoresizingMask=UIViewAutoresizingFlexibleWidth;box.backgroundColor=UIColor.systemGroupedBackgroundColor;
+    UITableView *table=[controller isKindOfClass:UITableViewController.class]?((UITableViewController *)controller).tableView:nil;CGFloat width=table.bounds.size.width;if(width<100)width=controller.view.bounds.size.width;if(width<100)width=UIScreen.mainScreen.bounds.size.width;
+    UIView *box=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];box.autoresizingMask=UIViewAutoresizingFlexibleWidth;
     UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(kABMCSelectedCardInset,2,240,20)];caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[box addSubview:caption];
     UIView *card=[[UIView alloc]initWithFrame:CGRectMake(kABMCSelectedCardInset,top,box.bounds.size.width-kABMCSelectedCardInset*2,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=15;[box addSubview:card];
-    NSArray *rows=items.count?items:@[@"none"];for(NSUInteger i=0;i<rows.count;i++){NSString *action=rows[i];BOOL none=[action isEqualToString:@"none"];UIView *rowView=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,card.bounds.size.width,row)];rowView.autoresizingMask=UIViewAutoresizingFlexibleWidth;rowView.userInteractionEnabled=YES;[card addSubview:rowView];UIImage *rawIcon=none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action);UIImage *cellIcon=NormalizedIcon(rawIcon) ?: rawIcon;UIImageView *image=[[UIImageView alloc]initWithImage:cellIcon];image.frame=CGRectMake(kABMCPrimaryIconCanvasX,(row-kABMCPrimaryIconCanvas)*.5,kABMCPrimaryIconCanvas,kABMCPrimaryIconCanvas);image.contentMode=UIViewContentModeScaleAspectFit;[rowView addSubview:image];UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(kABMCPrimaryTitleX,0,rowView.bounds.size.width-kABMCPrimaryTitleX-10,row)];label.autoresizingMask=UIViewAutoresizingFlexibleWidth;label.text=none?@"无操作":ABMCBriefActionTitle(action);label.textColor=ABMCActionTextColor(none?UIColor.systemRedColor:UIColor.systemBlueColor);label.font=[UIFont systemFontOfSize:ABMCUnifiedTextSize() weight:UIFontWeightRegular];[rowView addSubview:label];ABMCSelectedRowTarget *target=[ABMCSelectedRowTarget new];target.controller=controller;target.preferenceKey=preferenceKey;target.action=action;UILongPressGestureRecognizer *longPress=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];longPress.minimumPressDuration=.45;[rowView addGestureRecognizer:longPress];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[rowView addGestureRecognizer:doubleTap];objc_setAssociatedObject(rowView,@selector(ABMCSelectedActionsBanner),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<rows.count){UIView *line=[[UIView alloc]initWithFrame:CGRectMake(kABMCPrimaryTitleX,row-0.5,rowView.bounds.size.width-kABMCPrimaryTitleX,.5)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.backgroundColor=UIColor.separatorColor;[rowView addSubview:line];}}
+    NSArray *rows=items.count?items:@[@"none"];for(NSUInteger i=0;i<rows.count;i++){NSString *action=rows[i];BOOL none=[action isEqualToString:@"none"];UIView *rowView=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,card.bounds.size.width,row)];rowView.autoresizingMask=UIViewAutoresizingFlexibleWidth;rowView.userInteractionEnabled=YES;[card addSubview:rowView];UIImage *rawIcon=none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action);UIImage *cellIcon=NormalizedIcon(rawIcon) ?: rawIcon;UIImageView *image=[[UIImageView alloc]initWithImage:cellIcon];image.frame=CGRectMake(kABMCPrimaryIconCanvasX,(row-kABMCPrimaryIconCanvas)*.5,kABMCPrimaryIconCanvas,kABMCPrimaryIconCanvas);image.contentMode=UIViewContentModeScaleAspectFit;[rowView addSubview:image];UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(kABMCPrimaryTitleX,0,rowView.bounds.size.width-kABMCPrimaryTitleX-10,row)];label.autoresizingMask=UIViewAutoresizingFlexibleWidth;label.text=none?@"无操作":ABMCBriefActionTitle(action);label.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;label.font=[UIFont systemFontOfSize:kABMCPrimaryTextSize weight:UIFontWeightRegular];[rowView addSubview:label];ABMCSelectedRowTarget *target=[ABMCSelectedRowTarget new];target.controller=controller;target.preferenceKey=preferenceKey;target.action=action;UILongPressGestureRecognizer *longPress=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];longPress.minimumPressDuration=.45;[rowView addGestureRecognizer:longPress];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[rowView addGestureRecognizer:doubleTap];objc_setAssociatedObject(rowView,@selector(ABMCSelectedActionsBanner),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<rows.count){UIView *line=[[UIView alloc]initWithFrame:CGRectMake(kABMCPrimaryTitleX,row-0.5,rowView.bounds.size.width-kABMCPrimaryTitleX,.5)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.backgroundColor=UIColor.separatorColor;[rowView addSubview:line];}}
     return box;
 }
 

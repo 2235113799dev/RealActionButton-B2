@@ -17,6 +17,7 @@
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
 - (void)executeActionsInOrder:(NSArray<NSString *> *)actions;
 - (void)runShortcut:(NSString *)name;
+- (void)presentShortcutFolderAction:(NSString *)encoded;
 - (void)showControlCenter;
 - (void)showNotificationCenter;
 @end
@@ -131,6 +132,8 @@ static NSMutableSet *ABMCActiveWorkflowRunners;
         [self openURLString:[actionID substringFromIndex:4]];
     } else if ([actionID hasPrefix:@"link:"]) {
         [self openSavedLink:[actionID substringFromIndex:5]];
+    } else if ([actionID hasPrefix:@"shortcutfolder:"]) {
+        [self presentShortcutFolderAction:[actionID substringFromIndex:15]];
     } else if ([actionID hasPrefix:@"shortcutid:"]) {
         NSString *payload = [actionID substringFromIndex:11];
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
@@ -441,6 +444,8 @@ static NSMutableSet *ABMCActiveWorkflowRunners;
     });
 }
 
+- (void)presentShortcutFolderAction:(NSString *)encoded { NSData *data=[[NSData alloc]initWithBase64EncodedString:encoded options:0];NSDictionary *record=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;NSArray *items=[record[@"items"] isKindOfClass:NSArray.class]?record[@"items"]:@[];if(!items.count)return;dispatch_async(dispatch_get_main_queue(),^{UIAlertController *sheet=[UIAlertController alertControllerWithTitle:record[@"title"]?:@"快捷指令" message:@"选择要运行的快捷指令" preferredStyle:UIAlertControllerStyleActionSheet];for(NSDictionary *item in items){NSString *name=[item[@"name"] isKindOfClass:NSString.class]?item[@"name"]:@"快捷指令";NSString *identifier=[item[@"id"] isKindOfClass:NSString.class]?item[@"id"]:@"";[sheet addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a){[self runShortcutIdentifier:identifier name:name];}]];}[sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];UIViewController *presenter=UIApplication.sharedApplication.keyWindow.rootViewController;while(presenter.presentedViewController)presenter=presenter.presentedViewController;[presenter presentViewController:sheet animated:YES completion:nil];}); }
+
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name {
     if (!identifier.length && !name.length) return;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -455,9 +460,6 @@ static NSMutableSet *ABMCActiveWorkflowRunners;
             if ([runnerClass instancesRespondToSelector:initializer]) {
                 id runner = ((id (*)(id, SEL, id))objc_msgSend)([runnerClass alloc], initializer, identifier);
                 if (runner && [runner respondsToSelector:start]) {
-                    // Some system runners begin asynchronously after start.
-                    // Keep the instance alive briefly; no retained third-party
-                    // object or injected framework is involved.
                     @synchronized (ABMCActiveWorkflowRunners) { [ABMCActiveWorkflowRunners addObject:runner]; }
                     ((void (*)(id, SEL))objc_msgSend)(runner, start);
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(15*NSEC_PER_SEC)),dispatch_get_main_queue(),^{ @synchronized (ABMCActiveWorkflowRunners) { [ABMCActiveWorkflowRunners removeObject:runner]; } });

@@ -2,11 +2,12 @@
 #import "ABMCUIHelpers.h"
 #import <sqlite3.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 static BOOL UUIDOK(NSString*v){return[v isKindOfClass:NSString.class]&&[[NSUUID alloc]initWithUUIDString:v]!=nil;}
 @interface ABMCFolderTapTarget : NSObject @property(nonatomic,weak) id controller; @property(nonatomic,copy) NSDictionary *folder; - (void)singleTap:(UITapGestureRecognizer *)g; - (void)doubleTap:(UITapGestureRecognizer *)g; @end
 @implementation ABMCFolderTapTarget
-- (void)singleTap:(UITapGestureRecognizer *)g { if(g.state==UIGestureRecognizerStateRecognized && [self.controller respondsToSelector:@selector(toggleFolder:)]) [self.controller toggleFolder:self.folder]; }
-- (void)doubleTap:(UITapGestureRecognizer *)g { if(g.state==UIGestureRecognizerStateRecognized && [self.controller respondsToSelector:@selector(selectFolderAction:)]) [self.controller selectFolderAction:self.folder]; }
+- (void)singleTap:(UITapGestureRecognizer *)g { SEL sel=NSSelectorFromString(@"toggleFolder:");if(g.state==UIGestureRecognizerStateRecognized&&[self.controller respondsToSelector:sel])((void(*)(id,SEL,id))objc_msgSend)(self.controller,sel,self.folder); }
+- (void)doubleTap:(UITapGestureRecognizer *)g { SEL sel=NSSelectorFromString(@"selectFolderAction:");if(g.state==UIGestureRecognizerStateRecognized&&[self.controller respondsToSelector:sel])((void(*)(id,SEL,id))objc_msgSend)(self.controller,sel,self.folder); }
 @end
 @interface ABMCShortcutListController ()<UISearchBarDelegate> - (void)toggleFolder:(NSDictionary *)folder; - (void)selectFolderAction:(NSDictionary *)folder; @end
 @implementation ABMCShortcutListController{NSString*_key,*_query,*_expanded;NSArray*_all,*_folders;}

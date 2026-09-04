@@ -190,35 +190,24 @@ UIView *ABMCCategoryActionHeader(NSString *preferenceKey, UIViewController *cont
     for(NSUInteger i=0;i<count;i++){NSString *action=items.count?items[i]:@"none";BOOL none=[action isEqualToString:@"none"];UIView *line=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,cardWidth,row)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.userInteractionEnabled=YES;[card addSubview:line];UIImage *raw=none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action);UIImageView *icon=[[UIImageView alloc]initWithImage:NormalizedIcon(raw) ?: raw];icon.frame=CGRectMake(20,5,34,34);icon.contentMode=UIViewContentModeScaleAspectFit;[line addSubview:icon];UILabel *title=[[UILabel alloc]initWithFrame:CGRectMake(64,0,cardWidth-74,row)];title.autoresizingMask=UIViewAutoresizingFlexibleWidth;title.text=none?@"无操作":ABMCCategoryActionTitle(action);title.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;title.font=[UIFont systemFontOfSize:18 weight:UIFontWeightRegular];[line addSubview:title];ABMCCategorySelectedTarget *target=[ABMCCategorySelectedTarget new];target.controller=controller;target.key=preferenceKey;target.action=action;UILongPressGestureRecognizer *hold=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];hold.minimumPressDuration=.45;[line addGestureRecognizer:hold];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[line addGestureRecognizer:doubleTap];objc_setAssociatedObject(line,@selector(ABMCCategoryActionHeader),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<count){UIView *separator=[[UIView alloc]initWithFrame:CGRectMake(64,row-.5,cardWidth-64,.5)];separator.autoresizingMask=UIViewAutoresizingFlexibleWidth;separator.backgroundColor=UIColor.separatorColor;[line addSubview:separator];}}
     return header;
 }
+// Keep search and selected actions inside UITableView's native header.  A
+// sibling “sticky” overlay competes with Preferences' navigation transition
+// containers, causing both clipping under the bar and a visible rebuild flash.
 static const void *kABMCStickyHeaderKey=&kABMCStickyHeaderKey;
-static UIView *ABMCStickyHeaderHost(UITableViewController *controller) { return controller.navigationController.view ?: controller.view; }
-static CGRect ABMCStickyHeaderFrame(UITableViewController *controller, UIView *header) {
-    UITableView *table=controller.tableView;UIView *host=ABMCStickyHeaderHost(controller);UINavigationBar *bar=controller.navigationController.navigationBar;
-    CGRect tableFrame=[table.superview convertRect:table.frame toView:host];
-    // Resolve through window coordinates. Navigation bars can live inside a
-    // private transition container whose local frame starts at y=0; directly
-    // converting that frame produced the clipped header seen on device.
-    CGRect navigationInWindow=[bar convertRect:bar.bounds toView:nil];
-    CGRect navigationInHost=[host convertRect:navigationInWindow fromView:nil];
-    CGFloat top=bar.window?CGRectGetMaxY(navigationInHost):CGRectGetMinY(tableFrame);
-    return CGRectMake(CGRectGetMinX(tableFrame),top,CGRectGetWidth(tableFrame),CGRectGetHeight(header.bounds));
-}
 void ABMCInstallStickyCategoryActionHeader(UITableViewController *controller, NSString *preferenceKey, NSString *placeholder) {
     if(!controller)return;
-    UITableView *table=controller.tableView;UIView *host=ABMCStickyHeaderHost(controller);if(!host)return;
-    UIView *old=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);[old removeFromSuperview];
-    UIView *header=ABMCCategoryActionHeader(preferenceKey,controller,placeholder);
-    UIView *spacer=[[UIView alloc]initWithFrame:CGRectMake(0,0,table.bounds.size.width,CGRectGetHeight(header.bounds))];spacer.backgroundColor=UIColor.clearColor;spacer.userInteractionEnabled=NO;table.tableHeaderView=spacer;
-    header.frame=ABMCStickyHeaderFrame(controller,header);header.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleBottomMargin;header.opaque=YES;header.backgroundColor=UIColor.systemGroupedBackgroundColor;
-    UINavigationBar *bar=controller.navigationController.navigationBar;
-    if(bar.superview==host)[host insertSubview:header belowSubview:bar];else [host addSubview:header];
-    table.scrollIndicatorInsets=UIEdgeInsetsMake(CGRectGetHeight(header.bounds),0,0,0);
+    UITableView *table=controller.tableView;UIView *header=ABMCCategoryActionHeader(preferenceKey,controller,placeholder);
+    CGFloat width=CGRectGetWidth(table.bounds);if(width<100)width=UIScreen.mainScreen.bounds.size.width;
+    header.frame=CGRectMake(0,0,width,CGRectGetHeight(header.bounds));
+    table.tableHeaderView=header;
     objc_setAssociatedObject(controller,kABMCStickyHeaderKey,header,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 void ABMCUpdateStickyCategoryActionHeader(UITableViewController *controller) {
-    UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);if(header)header.frame=ABMCStickyHeaderFrame(controller,header);
+    UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);UITableView *table=controller.tableView;if(!header||!table)return;
+    CGFloat width=CGRectGetWidth(table.bounds);if(fabs(CGRectGetWidth(header.bounds)-width)<0.5)return;
+    header.frame=CGRectMake(0,0,width,CGRectGetHeight(header.bounds));table.tableHeaderView=header;
 }
-void ABMCRemoveStickyCategoryActionHeader(UITableViewController *controller) { UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);[header removeFromSuperview];objc_setAssociatedObject(controller,kABMCStickyHeaderKey,nil,OBJC_ASSOCIATION_ASSIGN); }
+void ABMCRemoveStickyCategoryActionHeader(UITableViewController *controller) { UIView *header=objc_getAssociatedObject(controller,kABMCStickyHeaderKey);if(controller.tableView.tableHeaderView==header)controller.tableView.tableHeaderView=nil;objc_setAssociatedObject(controller,kABMCStickyHeaderKey,nil,OBJC_ASSOCIATION_ASSIGN); }
 static NSMutableDictionary *ABMCActionPanels(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("actionPanels"),ABMCDomain); NSMutableDictionary *r=v&&CFGetTypeID(v)==CFDictionaryGetTypeID()?[(__bridge NSDictionary *)v mutableCopy]:[NSMutableDictionary dictionary]; if(v)CFRelease(v); return r; }
 NSArray<NSString *> *ABMCSelectedActions(NSString *preferenceKey) {
     if(!preferenceKey.length)return @[]; CFStringRef raw=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)preferenceKey,ABMCDomain); NSString *value=raw?(__bridge_transfer NSString *)raw:nil;

@@ -11,8 +11,9 @@
             NSMutableArray *out=[NSMutableArray array];
             NSSet *blocked=[NSSet setWithArray:@[@"AccountAuthenticationDialog",@"AirDrop",@"AirPlayReceiver",@"AskToMessagesHost",@"BacklinkIndicator",@"CarPlaySetup",@"CarPlaySplashScreen",@"CarPlayWallpaper",@"CheckerBoard",@"CheckerBoardRemoteSetup",@"ContactPhotoCarouselRemoteAlert",@"CTCarrierSpaceAuth",@"DemoApp",@"EyeReliefUI",@"ReplayKitAngel",@"ScreenTimeUnlock",@"SleepLockScreen",@"SLYahooAuth",@"SpringBoardEducation",@"TrustMe",@"Web",@"WebContentAnalysisUI",@"WebSheet"]];
             for(id proxy in ABMCInstalledApplications()){NSString *bid=ABMCBundleIdentifierForApplication(proxy),*name=ABMCDisplayNameForApplication(proxy);if(bid.length&&name.length&&![blocked containsObject:name])[out addObject:@{@"id":bid,@"name":name}];}
-            NSArray *sorted=[out sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];}];
-            dispatch_async(dispatch_get_main_queue(), ^{ self->_apps=sorted; [self.tableView reloadData]; });
+            NSArray *ordered=[out sortedArrayUsingComparator:^NSComparisonResult(NSDictionary*a,NSDictionary*b){return[a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];}];
+            NSMutableArray *sorted=[NSMutableArray array];NSMutableSet *seenNames=[NSMutableSet set];for(NSDictionary *item in ordered){NSString *name=[item[@"name"] lowercaseString];if(name.length && ![seenNames containsObject:name]){[seenNames addObject:name];[sorted addObject:item];}}
+            dispatch_async(dispatch_get_main_queue(), ^{ self->_apps=[sorted copy]; [self.tableView reloadData]; });
         }
     });
 }

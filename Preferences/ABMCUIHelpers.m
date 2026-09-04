@@ -128,7 +128,7 @@ UIImage *ABMCIconImageForBundleID(NSString *identifier) {
     if (!identifier.length) return nil;
     static NSCache *cache;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 160; });
+    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 80; });
     UIImage *cached = [cache objectForKey:identifier];
     if (cached) return cached;
     @try {
@@ -145,7 +145,7 @@ UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor) {
     if (glyph <= 0) return nil;
     static NSCache *cache;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 300; });
+    dispatch_once(&once, ^{ cache = [NSCache new]; cache.countLimit = 80; });
     NSString *key = [NSString stringWithFormat:@"%ld:%lld", (long)glyph, backgroundColor];
     UIImage *cached = [cache objectForKey:key];
     if (cached) return cached;

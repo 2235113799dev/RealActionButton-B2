@@ -83,7 +83,7 @@ static UIImage *IconForAction(NSString *action) {
     if (_specifiers) return _specifiers;
     NSMutableArray *items=[NSMutableArray array];
     [items addObject:[PSSpecifier groupSpecifierWithName:@"已选动作"]];
-    PSSpecifier *selected=[PSSpecifier preferenceSpecifierNamed:DisplayedTitleForAction(_current) target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:Nil];
+    PSSpecifier *selected=[PSSpecifier preferenceSpecifierNamed:DisplayedTitleForAction(_current) target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     [selected setProperty:@YES forKey:@"selectedAction"]; [items addObject:selected];
     [items addObject:[PSSpecifier groupSpecifierWithName:@"动作测试"]];
     PSSpecifier *test=[PSSpecifier preferenceSpecifierNamed:@"开始测试" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];

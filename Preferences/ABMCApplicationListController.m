@@ -37,9 +37,12 @@
     [segments addTarget:self action:@selector(changeKind:) forControlEvents:UIControlEventValueChanged];
     [header addSubview:segments];
     self.tableView.tableHeaderView = header;
+    UIButton *clear=[UIButton buttonWithType:UIButtonTypeSystem];clear.frame=CGRectMake(0,0,48,32);[clear setTitle:@"清空" forState:UIControlStateNormal];UITapGestureRecognizer *single=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(clearCurrent:)];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(clearAll:)];doubleTap.numberOfTapsRequired=2;[single requireGestureRecognizerToFail:doubleTap];[clear addGestureRecognizer:single];[clear addGestureRecognizer:doubleTap];self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithCustomView:clear];
     [self reloadApplications];
 }
 
+- (void)clearCurrent:(UITapGestureRecognizer *)gesture { CFPreferencesSetAppValue((__bridge CFStringRef)_preferenceKey,CFSTR("none"),Domain);CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),Changed,NULL,NULL,YES);[self.tableView reloadData]; }
+- (void)clearAll:(UITapGestureRecognizer *)gesture { for(NSString *key in @[@"singleClickAction",@"doubleClickAction",@"longPressAction"]){CFStringRef value=(CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)key,Domain);NSString *action=value?(__bridge_transfer NSString*)value:nil;if([action hasPrefix:@"app:"])CFPreferencesSetAppValue((__bridge CFStringRef)key,CFSTR("none"),Domain);}CFPreferencesAppSynchronize(Domain);CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),Changed,NULL,NULL,YES);[self.tableView reloadData]; }
 - (void)reloadApplications {
     NSMutableArray *items = [NSMutableArray array];
     for (id app in ABMCInstalledApplications()) {
@@ -71,9 +74,11 @@
     NSString *token=ABMCDisplayIconToken(presentationKey,identifier);
     ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCIconImageForBundleID(identifier) ?: ABMCTintedIcon(@"app.badge.checkmark", nil));
     cell.textLabel.font = [UIFont systemFontOfSize:18.0];
+    // Keep application browsing clean: identifier remains searchable but is
+    // not displayed under the app name.
     cell.detailTextLabel.font = [UIFont systemFontOfSize:14.0];
     cell.textLabel.text = ABMCDisplayTitle(presentationKey,item[@"name"]);
-    cell.detailTextLabel.text = identifier;
+    cell.detailTextLabel.text = nil;
     CFStringRef current = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, Domain);
     cell.accessoryType = current && [(__bridge NSString *)current isEqualToString:[@"app:" stringByAppendingString:identifier]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
     if (current) CFRelease(current);

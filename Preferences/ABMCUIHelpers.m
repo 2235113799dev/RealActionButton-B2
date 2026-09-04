@@ -166,18 +166,17 @@ static NSString *ABMCBriefPresentationKey(NSString *action) {
     if([action hasPrefix:@"link:"]) return [@"link." stringByAppendingString:[action substringFromIndex:5]];
     return [@"action." stringByAppendingString:action ?: @"none"];
 }
-static UIImage *ABMCBriefActionIcon(NSString *action) {
-    NSString *fallback=nil;
+UIImage *ABMCSelectedActionIcon(NSString *action) {
+    NSString *key=ABMCBriefPresentationKey(action),*fallback=nil;
     if([action hasPrefix:@"app:"]) fallback=[action substringFromIndex:4];
-    else if([action hasPrefix:@"shortcutid:"]){ fallback=@"square.stack.3d.up.fill"; }
+    else if([action hasPrefix:@"shortcutid:"]) fallback=@"square.stack.3d.up.fill";
     else if([action hasPrefix:@"link:"]){NSDictionary *record=ABMCLinkRecord([action substringFromIndex:5]);fallback=record[@"icon"] ?: @"link";}
     else if([action hasPrefix:@"url:"]) fallback=@"link";
     else { NSDictionary *icons=@{ @"default":@"gearshape.fill",@"flashlight":@"flashlight.on.fill",@"camera":@"camera.fill",@"silent":@"bell.slash.fill",@"screenshot":@"viewfinder",@"lock":@"lock.fill",@"controlCenter":@"switch.2",@"notificationCenter":@"bell.fill",@"settings":@"gearshape.fill",@"respring":@"arrow.clockwise",@"wechatScan":@"qrcode.viewfinder",@"wechatPay":@"creditcard.fill",@"alipayScan":@"qrcode.viewfinder",@"alipayPay":@"creditcard.fill"};fallback=icons[action] ?: @"square.grid.2x2.fill"; }
-    NSString *token=ABMCDisplayIconToken(ABMCBriefPresentationKey(action),fallback);
-    UIImage *overrideOrApp=ABMCIconImageForBundleID(token) ?: ABMCTintedIcon(token,nil);
-    if(overrideOrApp) return overrideOrApp;
+    id saved=PresentationOverrides()[key][@"icon"]; NSString *override=[saved isKindOfClass:NSString.class] && [saved length] ? saved : nil;
+    if(override.length){UIImage *image=ABMCIconImageForBundleID(override) ?: ABMCTintedIcon(override,nil);if(image)return image;}
     if([action hasPrefix:@"shortcutid:"]){NSArray *parts=[[action substringFromIndex:11]componentsSeparatedByString:@"|"];if(parts.count>3){UIImage *workflow=ABMCWorkflowIconImage([parts[2]integerValue],[parts[3]longLongValue]);if(workflow)return workflow;}}
-    return ABMCTintedIcon(fallback,nil);
+    return ABMCIconImageForBundleID(fallback) ?: ABMCTintedIcon(fallback,nil);
 }
 
 @interface ABMCSelectedRowTarget : NSObject
@@ -194,10 +193,12 @@ UIView *ABMCSelectedActionsBanner(NSString *preferenceKey, UIViewController *con
     NSArray *items=ABMCSelectedActions(preferenceKey);NSUInteger count=MAX((NSUInteger)1,items.count);CGFloat row=kABMCSelectedRowHeight,top=26,height=top+count*row+12;
     CGFloat width=controller.view.bounds.size.width; if(width<100) width=UIScreen.mainScreen.bounds.size.width;
     UIView *box=[[UIView alloc]initWithFrame:CGRectMake(0,0,width,height)];box.autoresizingMask=UIViewAutoresizingFlexibleWidth;
-    UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(kABMCGroupedInset,2,240,20)];caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[box addSubview:caption];
-    // Match the inset-grouped list card below instead of spanning wider.
-    UIView *card=[[UIView alloc]initWithFrame:CGRectMake(kABMCGroupedInset,top,box.bounds.size.width-kABMCGroupedInset*2,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=15;[box addSubview:card];
-    NSArray *rows=items.count?items:@[@"none"];for(NSUInteger i=0;i<rows.count;i++){NSString *action=rows[i];BOOL none=[action isEqualToString:@"none"];UIView *rowView=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,card.bounds.size.width,row)];rowView.autoresizingMask=UIViewAutoresizingFlexibleWidth;rowView.userInteractionEnabled=YES;[card addSubview:rowView];UIImageView *image=[[UIImageView alloc]initWithImage:none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCBriefActionIcon(action)];CGFloat iconSize=MIN(kABMCSelectedIconMaximum,ABMCUnifiedIconSize());image.frame=CGRectMake(18,(row-iconSize)*.5,iconSize,iconSize);image.contentMode=UIViewContentModeScaleAspectFit;[rowView addSubview:image];UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(56,0,rowView.bounds.size.width-66,row)];label.autoresizingMask=UIViewAutoresizingFlexibleWidth;label.text=none?@"无操作":ABMCBriefActionTitle(action);label.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;label.font=[UIFont systemFontOfSize:kABMCSelectedTextSize weight:UIFontWeightRegular];[rowView addSubview:label];ABMCSelectedRowTarget *target=[ABMCSelectedRowTarget new];target.controller=controller;target.preferenceKey=preferenceKey;target.action=action;UILongPressGestureRecognizer *longPress=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];longPress.minimumPressDuration=.45;[rowView addGestureRecognizer:longPress];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[rowView addGestureRecognizer:doubleTap];objc_setAssociatedObject(rowView,@selector(ABMCSelectedActionsBanner),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<rows.count){UIView *line=[[UIView alloc]initWithFrame:CGRectMake(56,row-0.5,rowView.bounds.size.width-56,.5)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.backgroundColor=UIColor.separatorColor;[rowView addSubview:line];}}
+    // UITableView already applies the grouped horizontal inset to table headers.
+    // Keep this component at header origin (0), otherwise a second inset makes
+    // it visibly narrower than the standard rows below.
+    UILabel *caption=[[UILabel alloc]initWithFrame:CGRectMake(0,2,240,20)];caption.text=@"已选动作";caption.textColor=UIColor.secondaryLabelColor;caption.font=[UIFont systemFontOfSize:16];[box addSubview:caption];
+    UIView *card=[[UIView alloc]initWithFrame:CGRectMake(0,top,box.bounds.size.width,count*row)];card.autoresizingMask=UIViewAutoresizingFlexibleWidth;card.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;card.layer.cornerRadius=15;[box addSubview:card];
+    NSArray *rows=items.count?items:@[@"none"];for(NSUInteger i=0;i<rows.count;i++){NSString *action=rows[i];BOOL none=[action isEqualToString:@"none"];UIView *rowView=[[UIView alloc]initWithFrame:CGRectMake(0,i*row,card.bounds.size.width,row)];rowView.autoresizingMask=UIViewAutoresizingFlexibleWidth;rowView.userInteractionEnabled=YES;[card addSubview:rowView];UIImageView *image=[[UIImageView alloc]initWithImage:none?ABMCTintedIcon(@"nosign",UIColor.systemRedColor):ABMCSelectedActionIcon(action)];CGFloat iconSize=MIN(kABMCSelectedIconMaximum,ABMCUnifiedIconSize());image.frame=CGRectMake(48,(row-iconSize)*.5,iconSize,iconSize);image.contentMode=UIViewContentModeScaleAspectFit;[rowView addSubview:image];UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(148,0,rowView.bounds.size.width-158,row)];label.autoresizingMask=UIViewAutoresizingFlexibleWidth;label.text=none?@"无操作":ABMCBriefActionTitle(action);label.textColor=none?UIColor.systemRedColor:UIColor.systemBlueColor;label.font=[UIFont systemFontOfSize:kABMCSelectedTextSize weight:UIFontWeightRegular];[rowView addSubview:label];ABMCSelectedRowTarget *target=[ABMCSelectedRowTarget new];target.controller=controller;target.preferenceKey=preferenceKey;target.action=action;UILongPressGestureRecognizer *longPress=[[UILongPressGestureRecognizer alloc]initWithTarget:target action:@selector(longPress:)];longPress.minimumPressDuration=.45;[rowView addGestureRecognizer:longPress];UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc]initWithTarget:target action:@selector(doubleTap:)];doubleTap.numberOfTapsRequired=2;[rowView addGestureRecognizer:doubleTap];objc_setAssociatedObject(rowView,@selector(ABMCSelectedActionsBanner),target,OBJC_ASSOCIATION_RETAIN_NONATOMIC);if(i+1<rows.count){UIView *line=[[UIView alloc]initWithFrame:CGRectMake(56,row-0.5,rowView.bounds.size.width-56,.5)];line.autoresizingMask=UIViewAutoresizingFlexibleWidth;line.backgroundColor=UIColor.separatorColor;[rowView addSubview:line];}}
     return box;
 }
 

@@ -43,3 +43,4 @@ UIImage *ABMCTintedIcon(NSString *token, UIColor *color);
 NSString *ABMCInferLinkIcon(NSString *urlString);
 NSString *ABMCApplicationName(NSString *bundleID);
 void ABMCApplyLargeIcon(UITableViewCell *cell, UIImage *image);
+UIImage *ABMCSelectedActionIcon(NSString *action);

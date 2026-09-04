@@ -10,7 +10,7 @@
 + (instancetype)_applicationIconImageForBundleIdentifier:(NSString *)identifier format:(int)format scale:(CGFloat)scale;
 @end
 
-@interface ABMCActionPanel ()
+@interface ABMCActionPanel () <UIGestureRecognizerDelegate>
 @property(nonatomic,strong) UIWindow *window;
 @property(nonatomic,weak) UIWindow *previousKeyWindow;
 @property(nonatomic,strong) UIView *card;
@@ -49,8 +49,8 @@ static UIImage *ABMCPanelIcon(NSString *action) {
 - (void)showActions:(NSArray<NSString *> *)actions executor:(ABMCActionExecutor *)executor {
     if(!actions.count)return;dispatch_async(dispatch_get_main_queue(),^{
         [self dismissAnimated:NO completion:^{[self.executor clearHardwareContext];}];self.actions=actions;self.executor=executor;
-        self.previousKeyWindow=ABMCPanelKeyWindow();UIWindowScene *scene=self.previousKeyWindow.windowScene;if(!scene){[self.executor clearHardwareContext];return;}UIWindow *window=[[UIWindow alloc]initWithWindowScene:scene];window.frame=scene.coordinateSpace.bounds;window.windowLevel=UIWindowLevelAlert+2;window.opaque=NO;window.backgroundColor=UIColor.clearColor;UIViewController *root=[UIViewController new];root.view.backgroundColor=UIColor.clearColor;window.rootViewController=root;self.window=window;[window makeKeyAndVisible];
-        UIControl *dismiss=[UIControl new];dismiss.frame=root.view.bounds;dismiss.backgroundColor=UIColor.clearColor;dismiss.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[dismiss addTarget:self action:@selector(backgroundTapped:) forControlEvents:UIControlEventTouchUpInside];[root.view addSubview:dismiss];
+        self.previousKeyWindow=ABMCPanelKeyWindow();UIWindowScene *scene=self.previousKeyWindow.windowScene;if(!scene){[self.executor clearHardwareContext];return;}UIWindow *window=[[UIWindow alloc]initWithWindowScene:scene];window.frame=scene.coordinateSpace.bounds;window.windowLevel=UIWindowLevelAlert+2;window.opaque=NO;window.backgroundColor=UIColor.clearColor;window.overrideUserInterfaceStyle=UIUserInterfaceStyleLight;UIViewController *root=[UIViewController new];root.overrideUserInterfaceStyle=UIUserInterfaceStyleLight;root.view.backgroundColor=UIColor.clearColor;window.rootViewController=root;self.window=window;[window makeKeyAndVisible];
+        UITapGestureRecognizer *outsideTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(backgroundTapped:)];outsideTap.delegate=self;outsideTap.cancelsTouchesInView=NO;[root.view addGestureRecognizer:outsideTap];
         NSUInteger columns=MIN((NSUInteger)4,actions.count),rows=(actions.count+columns-1)/columns;
         CGFloat cardInset=8.0,padding=18.0,cellH=94.0,iconDiameter=62.0;
         CGFloat width=CGRectGetWidth(root.view.bounds)-cardInset*2,height=rows*cellH+padding*2;
@@ -69,6 +69,7 @@ static UIImage *ABMCPanelIcon(NSString *action) {
         UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(panned:)];[card addGestureRecognizer:pan];card.transform=CGAffineTransformMakeScale(.86,.86);card.alpha=0;[UIView animateWithDuration:.38 delay:0 usingSpringWithDamping:.82 initialSpringVelocity:.45 options:UIViewAnimationOptionCurveEaseOut animations:^{card.transform=CGAffineTransformIdentity;card.alpha=1;} completion:nil];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
     });
 }
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch { return self.card && ![touch.view isDescendantOfView:self.card]; }
 - (void)backgroundTapped:(id)sender {[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];}
 - (void)panned:(UIPanGestureRecognizer *)gesture {CGPoint t=[gesture translationInView:self.card];if(gesture.state==UIGestureRecognizerStateChanged&&t.y<0){self.card.transform=CGAffineTransformMakeTranslation(0,t.y*.35);}if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled){if(t.y<-54)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];else [UIView animateWithDuration:.18 animations:^{self.card.transform=CGAffineTransformIdentity;}];}}
 - (void)actionTapped:(UIButton *)button {NSString *action=button.tag<self.actions.count?self.actions[button.tag]:nil;[self dismissAnimated:YES completion:^{[self.executor executeAction:action];[self.executor clearHardwareContext];}];}

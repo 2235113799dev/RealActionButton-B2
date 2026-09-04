@@ -1,4 +1,5 @@
 #import "ABMCActionExecutor.h"
+#import "ABMCActionPanel.h"
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
@@ -465,11 +466,10 @@ BOOL ABMCPerformingDefaultAction = NO;
 }
 
 - (void)executeActionsInOrder:(NSArray<NSString *> *)actions {
-    // No custom panel/UI is kept for combinations. Execute the persisted
-    // selection top-to-bottom. Each execution routine remains asynchronous.
     NSMutableOrderedSet *unique=[NSMutableOrderedSet orderedSet];for(id action in actions)if([action isKindOfClass:NSString.class]&&[action length]&&![action isEqualToString:@"none"])[unique addObject:action];
-    for(NSString *action in [unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))])[self executeAction:action];
-    [self clearHardwareContext];
+    NSArray *choices=[unique.array subarrayWithRange:NSMakeRange(0,MIN((NSUInteger)8,unique.count))];
+    if(choices.count==1){[self executeAction:choices.firstObject];[self clearHardwareContext];return;}
+    if(choices.count>1)[[ABMCActionPanel sharedPanel] showActions:choices executor:self];else [self clearHardwareContext];
 }
 
 - (void)runShortcut:(NSString *)name {

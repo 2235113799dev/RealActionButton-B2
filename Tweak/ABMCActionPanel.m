@@ -45,11 +45,11 @@ static UIImage *ABMCPanelIcon(NSString *action) {
         self.previousKeyWindow=ABMCPanelKeyWindow();UIWindowScene *scene=self.previousKeyWindow.windowScene;if(!scene){[self.executor clearHardwareContext];return;}UIWindow *window=[[UIWindow alloc]initWithWindowScene:scene];window.frame=scene.coordinateSpace.bounds;window.windowLevel=UIWindowLevelAlert+2;window.opaque=NO;window.backgroundColor=UIColor.clearColor;UIViewController *root=[UIViewController new];root.view.backgroundColor=UIColor.clearColor;window.rootViewController=root;self.window=window;[window makeKeyAndVisible];
         UIControl *dismiss=[UIControl new];dismiss.frame=root.view.bounds;dismiss.backgroundColor=UIColor.clearColor;dismiss.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[dismiss addTarget:self action:@selector(backgroundTapped:) forControlEvents:UIControlEventTouchUpInside];[root.view addSubview:dismiss];
         NSUInteger columns=MIN((NSUInteger)4,actions.count),rows=(actions.count+columns-1)/columns;
-        CGFloat cardInset=20.0,padding=12.0,cellH=76.0,iconDiameter=60.0;
+        CGFloat cardInset=8.0,padding=18.0,cellH=94.0,iconDiameter=62.0;
         CGFloat width=CGRectGetWidth(root.view.bounds)-cardInset*2,height=rows*cellH+padding*2;
-        CGFloat top=MAX(54.0,window.safeAreaInsets.top+6.0);
-        UIVisualEffectView *card=[[UIVisualEffectView alloc]initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterialLight]];
-        card.frame=CGRectMake(cardInset,top,width,height);card.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleBottomMargin;card.layer.cornerRadius=30;card.clipsToBounds=YES;[root.view addSubview:card];self.card=card;
+        CGFloat top=MAX(54.0,window.safeAreaInsets.top+14.0);
+        UIVisualEffectView *card=[[UIVisualEffectView alloc]initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialLight]];
+        card.frame=CGRectMake(cardInset,top,width,height);card.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleBottomMargin;card.layer.cornerRadius=34;card.clipsToBounds=YES;[root.view addSubview:card];self.card=card;
         CGFloat cellW=(width-padding*2)/columns;
         for(NSUInteger i=0;i<actions.count;i++){
             NSUInteger col=i%columns,row=i/columns;NSString *action=actions[i];
@@ -57,7 +57,7 @@ static UIImage *ABMCPanelIcon(NSString *action) {
             UIButton *button=[UIButton buttonWithType:UIButtonTypeCustom];button.frame=CGRectMake((cellW-iconDiameter)*.5,0,iconDiameter,iconDiameter);button.layer.cornerRadius=iconDiameter*.5;button.clipsToBounds=YES;button.tag=i;
             BOOL artwork=ABMCPanelUsesAppArtwork(action);button.backgroundColor=artwork?[UIColor.systemGray5Color colorWithAlphaComponent:.82]:UIColor.systemBlueColor;
             CGFloat iconSide=MIN(iconDiameter-12.0,ABMCPanelIconSize()+4.0);UIImageView *iconView=[[UIImageView alloc]initWithImage:ABMCPanelIcon(action)];iconView.frame=CGRectMake((iconDiameter-iconSide)*.5,(iconDiameter-iconSide)*.5,iconSide,iconSide);iconView.contentMode=UIViewContentModeScaleAspectFit;iconView.userInteractionEnabled=NO;if(artwork)iconView.layer.cornerRadius=8;iconView.clipsToBounds=YES;[button addSubview:iconView];[button addTarget:self action:@selector(actionTapped:) forControlEvents:UIControlEventTouchUpInside];[item addSubview:button];
-            UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(0,62,cellW,14)];label.text=ABMCPanelTitle(action);label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont systemFontOfSize:15 weight:UIFontWeightRegular];label.textColor=UIColor.labelColor;label.numberOfLines=1;label.lineBreakMode=NSLineBreakByTruncatingTail;[item addSubview:label];[card.contentView addSubview:item];
+            UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(0,67,cellW,27)];label.text=ABMCPanelTitle(action);label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont systemFontOfSize:16 weight:UIFontWeightRegular];label.textColor=UIColor.labelColor;label.numberOfLines=2;label.lineBreakMode=NSLineBreakByWordWrapping;[item addSubview:label];[card.contentView addSubview:item];
         }
         UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(panned:)];[card addGestureRecognizer:pan];card.transform=CGAffineTransformMakeScale(.86,.86);card.alpha=0;[UIView animateWithDuration:.38 delay:0 usingSpringWithDamping:.82 initialSpringVelocity:.45 options:UIViewAnimationOptionCurveEaseOut animations:^{card.transform=CGAffineTransformIdentity;card.alpha=1;} completion:nil];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
     });

@@ -13,12 +13,9 @@
 - (void)openSavedLink:(NSString *)linkID;
 - (void)openApp:(NSString *)bundleID fullscreen:(BOOL)fullscreen;
 - (BOOL)launchAppThroughHomeScreenIcon:(NSString *)bundleID;
-- (id)cachedAppShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
-- (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
 - (void)showShortcutPanel:(NSString *)panelID;
 - (void)runShortcut:(NSString *)name;
-- (void)runAppShortcutBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type;
 - (void)showControlCenter;
 - (void)showNotificationCenter;
 @end
@@ -31,7 +28,6 @@ BOOL ABMCPerformingDefaultAction = NO;
     NSString *_longPressAction;
     BOOL _useDirectFullscreenURLs;
     BOOL _useFullscreenApps;
-    BOOL _useFullscreenAppShortcuts;
 }
 
 + (instancetype)sharedExecutor {
@@ -62,8 +58,8 @@ BOOL ABMCPerformingDefaultAction = NO;
         _doubleAction = dbl ? (__bridge_transfer NSString *)dbl : @"none";
         _longPressAction = longPress ? (__bridge_transfer NSString *)longPress : @"default";
 
-        NSArray *modeKeys = @[@"urlOpenMode", @"appOpenMode", @"appShortcutOpenMode"];
-        BOOL *modeTargets[] = { &_useDirectFullscreenURLs, &_useFullscreenApps, &_useFullscreenAppShortcuts };
+        NSArray *modeKeys = @[@"urlOpenMode", @"appOpenMode"];
+        BOOL *modeTargets[] = { &_useDirectFullscreenURLs, &_useFullscreenApps };
         for (NSUInteger index = 0; index < modeKeys.count; index++) {
             CFPropertyListRef mode = CFPreferencesCopyAppValue((__bridge CFStringRef)modeKeys[index], PREFS_DOMAIN);
             *modeTargets[index] = (mode && CFGetTypeID(mode) == CFBooleanGetTypeID()) ? CFBooleanGetValue((CFBooleanRef)mode) : YES;
@@ -136,9 +132,6 @@ BOOL ABMCPerformingDefaultAction = NO;
         [self openURLString:[actionID substringFromIndex:4]];
     } else if ([actionID hasPrefix:@"link:"]) {
         [self openSavedLink:[actionID substringFromIndex:5]];
-    } else if ([actionID hasPrefix:@"appshortcut:"]) {
-        NSArray *parts = [[actionID substringFromIndex:12] componentsSeparatedByString:@"|"];
-        [self runAppShortcutBundleIdentifier:parts.firstObject type:(parts.count > 1 ? parts[1] : @"")];
     } else if ([actionID hasPrefix:@"shortcutid:"]) {
         NSString *payload = [actionID substringFromIndex:11];
         NSArray *parts = [payload componentsSeparatedByString:@"|"];
@@ -396,15 +389,20 @@ BOOL ABMCPerformingDefaultAction = NO;
     dispatch_async(dispatch_get_main_queue(), ^{
         @autoreleasepool {
             @try {
-                id application = UIApplication.sharedApplication;
-                SEL direct = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
-                if (fullscreen && [application respondsToSelector:direct]) {
-                    ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(application, direct, bid, NO);
-                    return;
+                if (fullscreen) {
+                    // Workspace owns normal iOS 17 multi-scene activation. Do
+                    // not call UIApplication launchApplicationWithIdentifier:
+                    // here: it can leave Settings on an empty scene.
+                    Class controllerClass=NSClassFromString(@"SBIconController"); SEL shared=NSSelectorFromString(@"sharedInstance");
+                    id controller=[controllerClass respondsToSelector:shared]?((id(*)(id,SEL))objc_msgSend)(controllerClass,shared):nil;
+                    id appController=[controller respondsToSelector:NSSelectorFromString(@"applicationController")]?((id(*)(id,SEL))objc_msgSend)(controller,NSSelectorFromString(@"applicationController")):nil;
+                    SEL applicationForID=NSSelectorFromString(@"applicationWithBundleIdentifier:"); id target=[appController respondsToSelector:applicationForID]?((id(*)(id,SEL,id))objc_msgSend)(appController,applicationForID,bid):nil;
+                    Class workspaceClass=NSClassFromString(@"SBMainWorkspace"); SEL workspaceShared=NSSelectorFromString(@"sharedInstance"); id workspace=[workspaceClass respondsToSelector:workspaceShared]?((id(*)(id,SEL))objc_msgSend)(workspaceClass,workspaceShared):nil;
+                    SEL open=NSSelectorFromString(@"openApplication:withOptions:");
+                    if(target&&[workspace respondsToSelector:open]) { ((void(*)(id,SEL,id,id))objc_msgSend)(workspace,open,target,@{}); return; }
                 }
-                // Off means icon-route only: FV gets the same interception
-                // point as a real Home Screen icon tap. No blocking direct
-                // launch fallback is used, so this cannot force full screen.
+                // Off uses the exact icon interaction point for split-screen
+                // tweaks. It deliberately has no direct-launch fallback.
                 [self launchAppThroughHomeScreenIcon:bid];
             } @catch (NSException *exception) {}
         }
@@ -480,73 +478,6 @@ BOOL ABMCPerformingDefaultAction = NO;
         }
         if (value) CFRelease(value);
         if (urlString.length) [self openURLString:urlString];
-    });
-}
-
-- (id)cachedAppShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
-    // Ask SpringBoard's already-resident SBApplication for its dynamic items.
-    // It reads SBApplicationShortcutStoreManager with the app's real version,
-    // avoiding both a stale version=0 cache lookup and any click-time XPC.
-    @try {
-        Class controllerClass = NSClassFromString(@"SBIconController");
-        SEL shared = NSSelectorFromString(@"sharedInstance");
-        id controller = [controllerClass respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(controllerClass, shared) : nil;
-        id appController = [controller respondsToSelector:NSSelectorFromString(@"applicationController")] ? ((id (*)(id, SEL))objc_msgSend)(controller, NSSelectorFromString(@"applicationController")) : nil;
-        SEL applicationForID = NSSelectorFromString(@"applicationWithBundleIdentifier:");
-        id application = [appController respondsToSelector:applicationForID] ? ((id (*)(id, SEL, id))objc_msgSend)(appController, applicationForID, bundleIdentifier) : nil;
-        NSArray *items = [application respondsToSelector:NSSelectorFromString(@"dynamicApplicationShortcutItems")] ? ((id (*)(id, SEL))objc_msgSend)(application, NSSelectorFromString(@"dynamicApplicationShortcutItems")) : nil;
-        SEL itemType = NSSelectorFromString(@"type");
-        for (id item in [items isKindOfClass:NSArray.class] ? items : @[]) {
-            NSString *candidate = [item respondsToSelector:itemType] ? ((id (*)(id, SEL))objc_msgSend)(item, itemType) : nil;
-            if ([candidate isEqualToString:type]) return item;
-        }
-    } @catch (NSException *exception) {}
-    return nil;
-}
-
-- (id)appShortcutItemForBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
-    // Never synchronously query SpringBoardServices here: this method runs in
-    // SpringBoard and that XPC route caused the Watchdog termination reported.
-    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
-    SEL proxyForID = NSSelectorFromString(@"applicationProxyForIdentifier:");
-    id proxy = [proxyClass respondsToSelector:proxyForID] ? ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxyForID, bundleIdentifier) : nil;
-    SEL typeSelector = NSSelectorFromString(@"type");
-    SEL itemsSelector = NSSelectorFromString(@"staticShortcutItems");
-    for (id item in [proxy respondsToSelector:itemsSelector] ? ((id (*)(id, SEL))objc_msgSend)(proxy, itemsSelector) : @[]) {
-        NSString *itemType = [item respondsToSelector:typeSelector] ? ((id (*)(id, SEL))objc_msgSend)(item, typeSelector) : nil;
-        if ([itemType isEqualToString:type]) return item;
-    }
-    // Safe static fallback: rebuild Apple shortcut items from the app plist.
-    NSURL *URL = [proxy respondsToSelector:NSSelectorFromString(@"bundleURL")] ? ((id (*)(id, SEL))objc_msgSend)(proxy, NSSelectorFromString(@"bundleURL")) : nil;
-    NSArray *entries = [NSBundle bundleWithURL:URL].infoDictionary[@"UIApplicationShortcutItems"];
-    Class itemClass = NSClassFromString(@"SBSApplicationShortcutItem");
-    SEL create = NSSelectorFromString(@"_staticApplicationShortcutItemsFromInfoPlistEntry:");
-    for (NSDictionary *entry in [entries isKindOfClass:[NSArray class]] ? entries : @[]) {
-        if (![entry[@"UIApplicationShortcutItemType"] isEqualToString:type]) continue;
-        NSArray *rebuilt = [itemClass respondsToSelector:create] ? ((id (*)(id, SEL, id))objc_msgSend)(itemClass, create, entry) : @[];
-        for (id item in rebuilt) {
-            NSString *itemType = [item respondsToSelector:typeSelector] ? ((id (*)(id, SEL))objc_msgSend)(item, typeSelector) : nil;
-            if ([itemType isEqualToString:type]) return item;
-        }
-    }
-    return nil;
-}
-
-- (void)runAppShortcutBundleIdentifier:(NSString *)bundleIdentifier type:(NSString *)type {
-    if (!bundleIdentifier.length || !type.length) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        @try {
-            id target = [self cachedAppShortcutItemForBundleIdentifier:bundleIdentifier type:type] ?: [self appShortcutItemForBundleIdentifier:bundleIdentifier type:type];
-            Class controllerClass=NSClassFromString(@"SBIconController"); SEL shared=NSSelectorFromString(@"sharedInstance");
-            id controller=[controllerClass respondsToSelector:shared]?((id(*)(id,SEL))objc_msgSend)(controllerClass,shared):nil;
-            id manager=[controller respondsToSelector:NSSelectorFromString(@"iconManager")]?((id(*)(id,SEL))objc_msgSend)(controller,NSSelectorFromString(@"iconManager")):nil;
-            id model=[manager respondsToSelector:NSSelectorFromString(@"iconModel")]?((id(*)(id,SEL))objc_msgSend)(manager,NSSelectorFromString(@"iconModel")):nil;
-            SEL iconForID=NSSelectorFromString(@"applicationIconForBundleIdentifier:"); id icon=[model respondsToSelector:iconForID]?((id(*)(id,SEL,id))objc_msgSend)(model,iconForID,bundleIdentifier):nil;
-            Class iconViewClass=NSClassFromString(@"SBIconView"); SEL defaultLocation=NSSelectorFromString(@"defaultIconLocation"); id location=[iconViewClass respondsToSelector:defaultLocation]?((id(*)(id,SEL))objc_msgSend)(iconViewClass,defaultLocation):nil;
-            SEL viewForIcon=NSSelectorFromString(@"iconViewForIcon:location:");id iconView=(icon&&[manager respondsToSelector:viewForIcon])?((id(*)(id,SEL,id,id))objc_msgSend)(manager,viewForIcon,icon,location):nil;
-            SEL activate=NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
-            if(target&&[iconViewClass respondsToSelector:activate])((void(*)(id,SEL,id,id,id))objc_msgSend)(iconViewClass,activate,target,bundleIdentifier,iconView);
-        } @catch (NSException *exception) {}
     });
 }
 

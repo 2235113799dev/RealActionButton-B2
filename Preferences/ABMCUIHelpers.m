@@ -141,24 +141,6 @@ UIImage *ABMCIconImageForBundleID(NSString *identifier) {
 }
 UIImage *ABMCIconImageForProxy(id application) { return ABMCIconImageForBundleID(ABMCBundleIdentifierForApplication(application)); }
 
-UIImage *ABMCAppShortcutIconImage(id shortcutItem, NSString *bundleID) {
-    if (!shortcutItem || !bundleID.length) return nil;
-    static NSCache *cache; static dispatch_once_t once;
-    dispatch_once(&once, ^{ cache=[NSCache new]; cache.countLimit=300; });
-    SEL type=NSSelectorFromString(@"type"); NSString *kind=[shortcutItem respondsToSelector:type]?((id(*)(id,SEL))objc_msgSend)(shortcutItem,type):@"";
-    NSString *key=[NSString stringWithFormat:@"%@|%@",bundleID,kind?:@""]; UIImage *saved=[cache objectForKey:key]; if(saved)return saved;
-    @try {
-        dlopen("/System/Library/PrivateFrameworks/SpringBoardHome.framework/SpringBoardHome", RTLD_LAZY|RTLD_LOCAL);
-        Class proxyClass=NSClassFromString(@"LSApplicationProxy"); SEL proxy=NSSelectorFromString(@"applicationProxyForIdentifier:");
-        id app=[proxyClass respondsToSelector:proxy]?((id(*)(id,SEL,id))objc_msgSend)(proxyClass,proxy,bundleID):nil;
-        NSURL *url=ObjectCall(app,@"bundleURL"); UIImage *image=nil; NSString *symbol=nil;
-        SEL build=NSSelectorFromString(@"sb_buildIconImageWithApplicationBundleURL:image:systemImageName:");
-        if(url&&[shortcutItem respondsToSelector:build]) ((void(*)(id,SEL,id,id*,id*))objc_msgSend)(shortcutItem,build,url,&image,&symbol);
-        if(!image&&symbol.length) image=[UIImage systemImageNamed:symbol withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightMedium]];
-        if(image)[cache setObject:image forKey:key]; return image;
-    } @catch(NSException *exception) { return nil; }
-}
-
 UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor) {
     if (glyph <= 0) return nil;
     static NSCache *cache;

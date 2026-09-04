@@ -16,7 +16,6 @@ NSString *ABMCDisplayNameForApplication(id application);
 UIImage *ABMCIconImageForBundleID(NSString *bundleID);
 UIImage *ABMCIconImageForProxy(id application);
 /// Builds an app's native long-press shortcut icon using SpringBoardHome.
-UIImage *ABMCAppShortcutIconImage(id shortcutItem, NSString *bundleID);
 /// Uses Apple's VoiceShortcutClient renderer; returns nil when unavailable.
 UIImage *ABMCWorkflowIconImage(NSInteger glyph, long long backgroundColor);
 /// Reads one saved Shortcut's original icon by UUID (Preferences-only, read-only).

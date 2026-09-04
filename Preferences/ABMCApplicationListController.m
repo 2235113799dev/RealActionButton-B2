@@ -67,17 +67,23 @@
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"ApplicationCell"];
     NSDictionary *item = self.visibleApplications[indexPath.row];
     NSString *identifier = item[@"id"];
-    // Application entries intentionally retain their real app name and icon.
-    // They are not presentation-editable by design.
-    ABMCApplyLargeIcon(cell, ABMCIconImageForBundleID(identifier) ?: ABMCTintedIcon(@"app.badge.checkmark", UIColor.systemBlueColor));
+    NSString *presentationKey=[@"app." stringByAppendingString:identifier];
+    NSString *token=ABMCDisplayIconToken(presentationKey,identifier);
+    ABMCApplyLargeIcon(cell, ABMCTintedIcon(token,nil) ?: ABMCIconImageForBundleID(token) ?: ABMCIconImageForBundleID(identifier) ?: ABMCTintedIcon(@"app.badge.checkmark", nil));
     cell.textLabel.font = [UIFont systemFontOfSize:18.0];
     cell.detailTextLabel.font = [UIFont systemFontOfSize:14.0];
-    cell.textLabel.text = item[@"name"];
+    cell.textLabel.text = ABMCDisplayTitle(presentationKey,item[@"name"]);
     cell.detailTextLabel.text = identifier;
     CFStringRef current = (CFStringRef)CFPreferencesCopyAppValue((__bridge CFStringRef)_preferenceKey, Domain);
     cell.accessoryType = current && [(__bridge NSString *)current isEqualToString:[@"app:" stringByAppendingString:identifier]] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
     if (current) CFRelease(current);
     return cell;
+}
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSDictionary *item=self.visibleApplications[indexPath.row];NSString *identifier=item[@"id"],*key=[@"app." stringByAppendingString:identifier];
+    UIContextualAction *edit=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"修改" handler:^(__unused UIContextualAction*a,__unused UIView*v,void(^done)(BOOL)){ABMCShowPresentationEditor(self,key,item[@"name"],identifier,^{[self.tableView reloadData];done(YES);});}];edit.backgroundColor=UIColor.systemBlueColor;
+    UIContextualAction *clear=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"清空" handler:^(__unused UIContextualAction*a,__unused UIView*v,void(^done)(BOOL)){ABMCClearPresentationOverride(key);[self.tableView reloadData];done(YES);}];clear.backgroundColor=UIColor.systemGrayColor;
+    return [UISwipeActionsConfiguration configurationWithActions:@[clear,edit]];
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     NSString *action = [@"app:" stringByAppendingString:self.visibleApplications[indexPath.row][@"id"]];

@@ -1,6 +1,5 @@
 #import "ABMCPreferences.h"
 #import "ABMCIconStyleController.h"
-#import "ABMCPanelStyleController.h"
 #import "ABMCUIHelpers.h"
 #import <Preferences/PSSpecifier.h>
 
@@ -116,9 +115,6 @@ static NSString *titleForActionID(NSString *actionID) {
         PSSpecifier *color = [PSSpecifier preferenceSpecifierNamed:@"图标颜色" target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil];
         [color setProperty:@"iconStyleColor" forKey:@"styleMode"]; [color setProperty:@"root.iconColor" forKey:@"presentationKey"]; [color setProperty:@"图标颜色" forKey:@"defaultTitle"]; [color setProperty:@"paintpalette.fill" forKey:@"defaultIcon"]; [color setProperty:ABMCTintedIcon(@"paintpalette.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"]; color->action=@selector(openIconStyle:); [specs addObject:color];
 
-        PSSpecifier *panelStyle = [PSSpecifier preferenceSpecifierNamed:@"面板样式" target:self set:NULL get:NULL detail:Nil cell:PSLinkCell edit:Nil];
-        [panelStyle setProperty:@"panel.style" forKey:@"presentationKey"]; [panelStyle setProperty:@"面板样式" forKey:@"defaultTitle"]; [panelStyle setProperty:@"rectangle.3.group.fill" forKey:@"defaultIcon"]; [panelStyle setProperty:ABMCTintedIcon(@"rectangle.3.group.fill", ABMCUnifiedIconColor()) forKey:@"iconImage"]; panelStyle->action=@selector(openPanelStyle:); [specs addObject:panelStyle];
-
         PSSpecifier *launchGroup = [PSSpecifier groupSpecifierWithName:@"启动方式"];
         [launchGroup setProperty:@"URL 可选择直接全屏打开；应用恢复使用 B2 原有的稳定系统启动链。快捷指令通过系统后台运行器执行。" forKey:@"footerText"];
         [specs addObject:launchGroup];
@@ -150,8 +146,6 @@ static NSString *titleForActionID(NSString *actionID) {
     ABMCIconStyleMode mode=[[specifier propertyForKey:@"styleMode"] isEqualToString:@"iconStyleColor"] ? ABMCIconStyleModeColor : ABMCIconStyleModeSize;
     [self.navigationController pushViewController:[[ABMCIconStyleController alloc] initWithMode:mode] animated:YES];
 }
-
-- (void)openPanelStyle:(PSSpecifier *)specifier { [self.navigationController pushViewController:[ABMCPanelStyleController new] animated:YES]; }
 
 - (NSNumber *)openModeForSpecifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];

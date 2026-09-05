@@ -4,7 +4,7 @@ THEOS_PACKAGE_SCHEME = rootless
 export ARCHS = arm64 arm64e
 
 BUNDLE_NAME = RealActionButton
-$(BUNDLE_NAME)_FILES = ABMCPreferences.m ABMCIconStyleController.m ABMCPanelStyleController.m ABMCActionListController.m ABMCBuiltinListController.m ABMCApplicationListController.m ABMCShortcutListController.m ABMCLinkListController.m ABMCUIHelpers.m
+$(BUNDLE_NAME)_FILES = ABMCPreferences.m ABMCIconStyleController.m ABMCActionListController.m ABMCBuiltinListController.m ABMCApplicationListController.m ABMCShortcutListController.m ABMCLinkListController.m ABMCUIHelpers.m
 $(BUNDLE_NAME)_CFLAGS = -fobjc-arc
 $(BUNDLE_NAME)_FRAMEWORKS = UIKit
 $(BUNDLE_NAME)_PRIVATE_FRAMEWORKS = Preferences

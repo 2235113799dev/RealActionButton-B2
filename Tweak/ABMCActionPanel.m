@@ -13,6 +13,7 @@
 @class ABMCActionPanel;
 @interface ABMCActionPanel (BackdropActions)
 - (void)backgroundTapped:(id)sender;
+- (void)blankPanelTapped:(id)sender;
 @end
 @interface ABMCPanelBackdrop : UIView
 @property(nonatomic,weak) ABMCActionPanel *owner;
@@ -23,7 +24,7 @@
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event { [self.owner backgroundTapped:nil]; }
 @end
 
-@interface ABMCActionPanel ()
+@interface ABMCActionPanel ()<UIGestureRecognizerDelegate>
 @property(nonatomic,strong) UIWindow *window;
 @property(nonatomic,weak) UIWindow *hostWindow;
 @property(nonatomic,strong) UIView *card;
@@ -97,25 +98,24 @@ static UIImage *ABMCPanelIcon(NSString *action) {
             UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(0,72,cellW,20)];label.text=ABMCPanelTitle(action);label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont systemFontOfSize:12 weight:UIFontWeightRegular];label.textColor=self.darkPanel?UIColor.whiteColor:UIColor.blackColor;label.numberOfLines=2;label.lineBreakMode=NSLineBreakByWordWrapping;[item addSubview:label];[content addSubview:item];
         }
         UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(panned:)];[card addGestureRecognizer:pan];
-        // One anchored transition: the card and its grid share their final
-        // center throughout. No staged content, translation or bounds layout.
-        self.transitioning=YES;card.alpha=.02;card.transform=CGAffineTransformMakeScale(.76,.76);content.alpha=1;content.transform=CGAffineTransformIdentity;
-        [UIView animateWithDuration:.23 delay:0 usingSpringWithDamping:.88 initialSpringVelocity:.42 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionBeginFromCurrentState animations:^{card.alpha=1;card.transform=CGAffineTransformIdentity;} completion:^(__unused BOOL finished){self.transitioning=NO;}];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
+        UITapGestureRecognizer *blankTap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(blankPanelTapped:)];blankTap.delegate=self;blankTap.cancelsTouchesInView=NO;[blankTap requireGestureRecognizerToFail:pan];[card addGestureRecognizer:blankTap];
+        // Render one settled frame first, then animate only compositor properties.
+        // This avoids the blank/overshoot frames visible in the prior transition.
+        self.transitioning=YES;card.alpha=.01;card.transform=CGAffineTransformMakeScale(.86,.86);content.alpha=1;content.transform=CGAffineTransformIdentity;
+        dispatch_async(dispatch_get_main_queue(), ^{[UIView animateWithDuration:.26 delay:0 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionAllowAnimatedContent animations:^{card.alpha=1;card.transform=CGAffineTransformIdentity;} completion:^(__unused BOOL finished){self.transitioning=NO;}];});UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
     });
 }
 - (void)backgroundTapped:(id)sender {[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];}
 - (void)panned:(UIPanGestureRecognizer *)gesture {
-    if(self.transitioning)return;CGPoint t=[gesture translationInView:self.card];CGFloat dx=MAX(0,t.x),dy=MIN(0,t.y);
-    if(gesture.state==UIGestureRecognizerStateChanged){
-        // Retain original center while tracking; a small scale conveys dismissal
-        // without dragging the panel into the Dynamic-Island compositor region.
-        CGFloat progress=MIN(1,MAX(dx/180.0,-dy/180.0));self.card.transform=CGAffineTransformMakeScale(1-progress*.10,1-progress*.10);self.card.alpha=1-progress*.26;
-    }
+    if(self.transitioning)return;CGFloat dy=MIN(0,[gesture translationInView:self.card].y);
+    if(gesture.state==UIGestureRecognizerStateChanged){CGFloat progress=MIN(1,-dy/180.0);self.card.transform=CGAffineTransformMakeScale(1-progress*.08,1-progress*.08);self.card.alpha=1-progress*.20;}
     if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled){
-        if(dx>64||dy<-54)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];
-        else [UIView animateWithDuration:.14 delay:0 usingSpringWithDamping:.90 initialSpringVelocity:.18 options:UIViewAnimationOptionBeginFromCurrentState animations:^{self.card.transform=CGAffineTransformIdentity;self.card.alpha=1;} completion:nil];
+        if(dy<-54)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];
+        else [UIView animateWithDuration:.14 delay:0 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionBeginFromCurrentState animations:^{self.card.transform=CGAffineTransformIdentity;self.card.alpha=1;} completion:nil];
     }
 }
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch { if(![gesture isKindOfClass:UITapGestureRecognizer.class])return YES;for(UIView *view=touch.view;view&&view!=self.card;view=view.superview)if([view isKindOfClass:UIControl.class])return NO;return YES; }
+- (void)blankPanelTapped:(id)sender { if(!self.transitioning)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}]; }
 - (void)actionTapped:(UIButton *)button {NSString *action=button.tag<self.actions.count?self.actions[button.tag]:nil;[self dismissAnimated:YES completion:^{[self.executor executeAction:action];[self.executor clearHardwareContext];}];}
-- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){UIWindow *host=self.hostWindow;window.hidden=YES;window.rootViewController=nil;self.window=nil;self.card=nil;self.content=nil;self.actions=nil;self.hostWindow=nil;self.transitioning=NO;if(host&&!host.hidden)[host makeKeyWindow];if(completion)completion();};if(animated){self.transitioning=YES;[UIView animateWithDuration:.18 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState animations:^{card.alpha=.01;card.transform=CGAffineTransformMakeScale(.76,.76);} completion:done];}else done(YES);}
+- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){UIWindow *host=self.hostWindow;window.hidden=YES;window.rootViewController=nil;self.window=nil;self.card=nil;self.content=nil;self.actions=nil;self.hostWindow=nil;self.transitioning=NO;if(host&&!host.hidden)[host makeKeyWindow];if(completion)completion();};if(animated){self.transitioning=YES;[UIView animateWithDuration:.20 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionAllowAnimatedContent animations:^{card.alpha=.01;card.transform=CGAffineTransformMakeScale(.86,.86);} completion:done];}else done(YES);}
 @end

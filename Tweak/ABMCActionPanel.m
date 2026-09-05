@@ -53,9 +53,9 @@ static NSString *ABMCPanelSymbol(NSString *action) {
 }
 static UIWindow *ABMCPanelKeyWindow(void) { for(UIScene *raw in UIApplication.sharedApplication.connectedScenes){if(![raw isKindOfClass:UIWindowScene.class]||raw.activationState!=UISceneActivationStateForegroundActive)continue;UIWindowScene *scene=(UIWindowScene *)raw;for(UIWindow *window in scene.windows)if(window.isKeyWindow)return window;for(UIWindow *window in scene.windows)if(!window.hidden&&window.alpha>.01)return window;}return nil; }
 static BOOL ABMCPanelIsDark(UIWindow *host) { return host.traitCollection.userInterfaceStyle==UIUserInterfaceStyleDark; }
-static UIColor *ABMCPanelBackgroundColor(BOOL dark) { return dark?[UIColor colorWithWhite:.11 alpha:1.0]:[UIColor colorWithWhite:.965 alpha:1.0]; }
-static UIColor *ABMCPanelTileColor(BOOL dark, BOOL artwork) { return artwork?(dark?[UIColor colorWithWhite:.25 alpha:1]:[UIColor colorWithWhite:.92 alpha:1]):UIColor.systemIndigoColor; }
-static UIColor *ABMCPanelTileBorder(BOOL dark) { return dark?[UIColor colorWithWhite:.23 alpha:1]:[UIColor colorWithWhite:.88 alpha:1]; }
+static UIColor *ABMCPanelBackgroundColor(BOOL dark) { return dark?[UIColor colorWithRed:.110 green:.110 blue:.118 alpha:1.0]:[UIColor colorWithRed:.965 green:.965 blue:.975 alpha:1.0]; }
+static UIColor *ABMCPanelTileColor(BOOL dark, BOOL artwork) { return artwork?(dark?[UIColor colorWithRed:.235 green:.235 blue:.245 alpha:1.0]:[UIColor colorWithRed:.910 green:.910 blue:.925 alpha:1.0]):UIColor.systemIndigoColor; }
+static UIColor *ABMCPanelTileBorder(BOOL dark) { return dark?[UIColor colorWithRed:.185 green:.185 blue:.195 alpha:1.0]:[UIColor colorWithRed:.875 green:.875 blue:.895 alpha:1.0]; }
 static CGFloat ABMCPanelIconSize(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("unifiedIconSize"),PREFS_DOMAIN);CGFloat size=v&&CFGetTypeID(v)==CFNumberGetTypeID()?[(__bridge NSNumber *)v doubleValue]:30.0;if(v)CFRelease(v);return MIN(48.0,MAX(12.0,size)); }
 static NSString *ABMCPanelPreferredBundle(NSString *action) {
     NSDictionary *mapped=@{@"wechatScan":@"com.tencent.xin",@"wechatPay":@"com.tencent.xin",@"alipayScan":@"com.alipay.iphoneclient",@"alipayPay":@"com.alipay.iphoneclient"};
@@ -96,12 +96,23 @@ static UIImage *ABMCPanelIcon(NSString *action) {
             UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(0,65,cellW,24)];label.text=ABMCPanelTitle(action);label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont systemFontOfSize:14 weight:UIFontWeightRegular];label.textColor=self.darkPanel?UIColor.whiteColor:UIColor.blackColor;label.numberOfLines=2;label.lineBreakMode=NSLineBreakByWordWrapping;[item addSubview:label];[content addSubview:item];
         }
         UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(panned:)];[card addGestureRecognizer:pan];
-        // Animate composited alpha/transform only: no layout calculation occurs per frame.
-        card.alpha=0;content.transform=CGAffineTransformMakeScale(.90,.90);[UIView animateWithDuration:.18 delay:0 usingSpringWithDamping:.96 initialSpringVelocity:.35 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionBeginFromCurrentState animations:^{card.alpha=1;content.transform=CGAffineTransformIdentity;} completion:nil];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
+        // Native-style horizontal transition: the whole panel enters from the
+        // left and never travels toward or over the system Dynamic Island.
+        card.alpha=0;card.transform=CGAffineTransformMakeTranslation(-MIN(72.0,width*.22),0);content.transform=CGAffineTransformIdentity;[UIView animateWithDuration:.22 delay:0 usingSpringWithDamping:.92 initialSpringVelocity:.32 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionBeginFromCurrentState animations:^{card.alpha=1;card.transform=CGAffineTransformIdentity;} completion:nil];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
     });
 }
 - (void)backgroundTapped:(id)sender {[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];}
-- (void)panned:(UIPanGestureRecognizer *)gesture {CGPoint t=[gesture translationInView:self.card];if(gesture.state==UIGestureRecognizerStateChanged&&t.y<0){self.card.transform=CGAffineTransformMakeTranslation(0,t.y*.35);}if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled){if(t.y<-54)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];else [UIView animateWithDuration:.18 animations:^{self.card.transform=CGAffineTransformIdentity;}];}}
+- (void)panned:(UIPanGestureRecognizer *)gesture {
+    CGPoint t=[gesture translationInView:self.card];CGFloat dx=MAX(0,t.x),dy=MIN(0,t.y);
+    if(gesture.state==UIGestureRecognizerStateChanged){
+        // Interactive right-swipe and up-swipe feedback; transform only, never layout.
+        self.card.transform=CGAffineTransformMakeTranslation(dx*.72,dy*.32);self.card.alpha=MAX(.58,1-MAX(dx/520.0,-dy/760.0));
+    }
+    if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled){
+        if(dx>64||dy<-54)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];
+        else [UIView animateWithDuration:.16 delay:0 usingSpringWithDamping:1 initialSpringVelocity:.15 options:UIViewAnimationOptionBeginFromCurrentState animations:^{self.card.transform=CGAffineTransformIdentity;self.card.alpha=1;} completion:nil];
+    }
+}
 - (void)actionTapped:(UIButton *)button {NSString *action=button.tag<self.actions.count?self.actions[button.tag]:nil;[self dismissAnimated:YES completion:^{[self.executor executeAction:action];[self.executor clearHardwareContext];}];}
-- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){UIWindow *host=self.hostWindow;window.hidden=YES;window.rootViewController=nil;self.window=nil;self.card=nil;self.content=nil;self.actions=nil;self.hostWindow=nil;if(host&&!host.hidden)[host makeKeyWindow];if(completion)completion();};if(animated){UIView *content=self.content;[UIView animateWithDuration:.15 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState animations:^{content.alpha=0;content.transform=CGAffineTransformMakeScale(.90,.90);card.alpha=0;} completion:done];}else done(YES);}
+- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){UIWindow *host=self.hostWindow;window.hidden=YES;window.rootViewController=nil;self.window=nil;self.card=nil;self.content=nil;self.actions=nil;self.hostWindow=nil;if(host&&!host.hidden)[host makeKeyWindow];if(completion)completion();};if(animated){UIView *content=self.content;CGFloat exitX=CGRectGetWidth(card.superview.bounds)+CGRectGetWidth(card.bounds);[UIView animateWithDuration:.20 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState animations:^{content.alpha=0;card.transform=CGAffineTransformMakeTranslation(exitX,0);card.alpha=0;} completion:done];}else done(YES);}
 @end

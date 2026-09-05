@@ -30,6 +30,7 @@
 @property(nonatomic,strong) UIView *content;
 @property(nonatomic,assign) CGPoint panelCenter;
 @property(nonatomic,assign) BOOL darkPanel;
+@property(nonatomic,assign) BOOL transitioning;
 @property(nonatomic,copy) NSArray<NSString *> *actions;
 @property(nonatomic,weak) ABMCActionExecutor *executor;
 @end
@@ -96,27 +97,25 @@ static UIImage *ABMCPanelIcon(NSString *action) {
             UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(0,72,cellW,20)];label.text=ABMCPanelTitle(action);label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont systemFontOfSize:12 weight:UIFontWeightRegular];label.textColor=self.darkPanel?UIColor.whiteColor:UIColor.blackColor;label.numberOfLines=2;label.lineBreakMode=NSLineBreakByWordWrapping;[item addSubview:label];[content addSubview:item];
         }
         UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(panned:)];[card addGestureRecognizer:pan];
-        // Two-stage native-like reveal: the shell settles first, then the grid
-        // unfolds independently. All animation is compositor-only (alpha/transform).
-        CGFloat entryY=-MIN(40.0,MAX(26.0,top*.5));
-        card.alpha=0;card.transform=CGAffineTransformMakeTranslation(0,entryY);content.alpha=0;content.transform=CGAffineTransformMakeScale(.965,.86);
-        [UIView animateWithDuration:.15 delay:0 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionBeginFromCurrentState animations:^{card.alpha=1;card.transform=CGAffineTransformIdentity;} completion:^(__unused BOOL finished){
-            [UIView animateWithDuration:.14 delay:0 usingSpringWithDamping:.94 initialSpringVelocity:.18 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionBeginFromCurrentState animations:^{content.alpha=1;content.transform=CGAffineTransformIdentity;} completion:nil];
-        }];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
+        // One anchored transition: the card and its grid share their final
+        // center throughout. No staged content, translation or bounds layout.
+        self.transitioning=YES;card.alpha=.02;card.transform=CGAffineTransformMakeScale(.76,.76);content.alpha=1;content.transform=CGAffineTransformIdentity;
+        [UIView animateWithDuration:.23 delay:0 usingSpringWithDamping:.88 initialSpringVelocity:.42 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionBeginFromCurrentState animations:^{card.alpha=1;card.transform=CGAffineTransformIdentity;} completion:^(__unused BOOL finished){self.transitioning=NO;}];UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[feedback prepare];[feedback impactOccurred];
     });
 }
 - (void)backgroundTapped:(id)sender {[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];}
 - (void)panned:(UIPanGestureRecognizer *)gesture {
-    CGPoint t=[gesture translationInView:self.card];CGFloat dx=MAX(0,t.x),dy=MIN(0,t.y);
+    if(self.transitioning)return;CGPoint t=[gesture translationInView:self.card];CGFloat dx=MAX(0,t.x),dy=MIN(0,t.y);
     if(gesture.state==UIGestureRecognizerStateChanged){
-        // Interactive right-swipe and up-swipe feedback; transform only, never layout.
-        self.card.transform=CGAffineTransformMakeTranslation(dx*.72,dy*.32);self.card.alpha=MAX(.58,1-MAX(dx/520.0,-dy/760.0));
+        // Retain original center while tracking; a small scale conveys dismissal
+        // without dragging the panel into the Dynamic-Island compositor region.
+        CGFloat progress=MIN(1,MAX(dx/180.0,-dy/180.0));self.card.transform=CGAffineTransformMakeScale(1-progress*.10,1-progress*.10);self.card.alpha=1-progress*.26;
     }
     if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled){
         if(dx>64||dy<-54)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];
-        else [UIView animateWithDuration:.16 delay:0 usingSpringWithDamping:1 initialSpringVelocity:.15 options:UIViewAnimationOptionBeginFromCurrentState animations:^{self.card.transform=CGAffineTransformIdentity;self.card.alpha=1;} completion:nil];
+        else [UIView animateWithDuration:.14 delay:0 usingSpringWithDamping:.90 initialSpringVelocity:.18 options:UIViewAnimationOptionBeginFromCurrentState animations:^{self.card.transform=CGAffineTransformIdentity;self.card.alpha=1;} completion:nil];
     }
 }
 - (void)actionTapped:(UIButton *)button {NSString *action=button.tag<self.actions.count?self.actions[button.tag]:nil;[self dismissAnimated:YES completion:^{[self.executor executeAction:action];[self.executor clearHardwareContext];}];}
-- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){UIWindow *host=self.hostWindow;window.hidden=YES;window.rootViewController=nil;self.window=nil;self.card=nil;self.content=nil;self.actions=nil;self.hostWindow=nil;if(host&&!host.hidden)[host makeKeyWindow];if(completion)completion();};if(animated){UIView *content=self.content;CGFloat exitY=-MIN(40.0,MAX(26.0,CGRectGetMinY(card.frame)*.5));[UIView animateWithDuration:.10 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState animations:^{content.alpha=0;content.transform=CGAffineTransformMakeScale(.965,.86);} completion:^(__unused BOOL finished){[UIView animateWithDuration:.15 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState animations:^{card.transform=CGAffineTransformMakeTranslation(0,exitY);card.alpha=0;} completion:done];}];}else done(YES);}
+- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){UIWindow *host=self.hostWindow;window.hidden=YES;window.rootViewController=nil;self.window=nil;self.card=nil;self.content=nil;self.actions=nil;self.hostWindow=nil;self.transitioning=NO;if(host&&!host.hidden)[host makeKeyWindow];if(completion)completion();};if(animated){self.transitioning=YES;[UIView animateWithDuration:.18 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState animations:^{card.alpha=.01;card.transform=CGAffineTransformMakeScale(.76,.76);} completion:done];}else done(YES);}
 @end

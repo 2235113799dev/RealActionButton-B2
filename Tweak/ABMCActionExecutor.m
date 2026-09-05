@@ -15,6 +15,7 @@
 - (void)openFullscreenURL:(NSURL *)url;
 - (void)openSavedLink:(NSString *)linkID;
 - (void)openApp:(NSString *)bundleID;
+- (void)openSettings;
 - (void)runShortcutIdentifier:(NSString *)identifier name:(NSString *)name;
 - (void)executeActionsInOrder:(NSArray<NSString *> *)actions;
 - (void)runShortcut:(NSString *)name;
@@ -113,7 +114,7 @@ BOOL ABMCPerformingDefaultAction = NO;
     } else if ([actionID isEqualToString:@"notificationCenter"]) {
         [self showNotificationCenter];
     } else if ([actionID isEqualToString:@"settings"]) {
-        [self openApp:@"com.apple.Preferences"];
+        [self openSettings];
     } else if ([actionID isEqualToString:@"respring"]) {
         [self respring];
     } else if ([actionID isEqualToString:@"wechatScan"]) {
@@ -352,6 +353,19 @@ BOOL ABMCPerformingDefaultAction = NO;
 }
 
 #pragma mark - Open App
+
+- (void)openSettings {
+    // Settings needs URL scene routing on iOS 17. This intentionally bypasses
+    // the user-selectable fullscreen URL path and uses UIKit scene activation.
+    NSURL *url=[NSURL URLWithString:@"App-prefs:root=General"];
+    if(!url)return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool { @try {
+            SEL open=NSSelectorFromString(@"openURL:options:completionHandler:");
+            if([UIApplication.sharedApplication respondsToSelector:open])((void(*)(id,SEL,id,id,id))objc_msgSend)(UIApplication.sharedApplication,open,url,@{},nil);
+        } @catch(__unused NSException *exception) {} }
+    });
+}
 
 - (void)openApp:(NSString *)bundleID {
     // Stable B2 system application-launch route.

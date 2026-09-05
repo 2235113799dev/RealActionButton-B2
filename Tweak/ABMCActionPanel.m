@@ -28,6 +28,7 @@
 @property(nonatomic,weak) UIWindow *hostWindow;
 @property(nonatomic,strong) UIView *card;
 @property(nonatomic,strong) UIView *content;
+@property(nonatomic,strong) UIView *islandCover;
 @property(nonatomic,assign) CGPoint panelCenter;
 @property(nonatomic,assign) BOOL darkPanel;
 @property(nonatomic,copy) NSArray<NSString *> *actions;
@@ -53,9 +54,9 @@ static NSString *ABMCPanelSymbol(NSString *action) {
 }
 static UIWindow *ABMCPanelKeyWindow(void) { for(UIScene *raw in UIApplication.sharedApplication.connectedScenes){if(![raw isKindOfClass:UIWindowScene.class]||raw.activationState!=UISceneActivationStateForegroundActive)continue;UIWindowScene *scene=(UIWindowScene *)raw;for(UIWindow *window in scene.windows)if(window.isKeyWindow)return window;for(UIWindow *window in scene.windows)if(!window.hidden&&window.alpha>.01)return window;}return nil; }
 static BOOL ABMCPanelIsDark(UIWindow *host) { return host.traitCollection.userInterfaceStyle==UIUserInterfaceStyleDark; }
-static UIColor *ABMCPanelBackgroundColor(BOOL dark) { return dark?[UIColor colorWithWhite:.105 alpha:1.0]:UIColor.whiteColor; }
-static UIColor *ABMCPanelTileColor(BOOL dark, BOOL artwork) { return artwork?(dark?[UIColor colorWithWhite:.25 alpha:1]:[UIColor colorWithWhite:.91 alpha:1]):UIColor.systemIndigoColor; }
-static UIColor *ABMCPanelTileBorder(BOOL dark) { return dark?[UIColor colorWithWhite:.21 alpha:1]:[UIColor colorWithWhite:.90 alpha:1]; }
+static UIColor *ABMCPanelBackgroundColor(BOOL dark) { return dark?[UIColor colorWithWhite:.11 alpha:1.0]:[UIColor colorWithWhite:.965 alpha:1.0]; }
+static UIColor *ABMCPanelTileColor(BOOL dark, BOOL artwork) { return artwork?(dark?[UIColor colorWithWhite:.25 alpha:1]:[UIColor colorWithWhite:.92 alpha:1]):UIColor.systemIndigoColor; }
+static UIColor *ABMCPanelTileBorder(BOOL dark) { return dark?[UIColor colorWithWhite:.23 alpha:1]:[UIColor colorWithWhite:.88 alpha:1]; }
 static CGFloat ABMCPanelIconSize(void) { CFPropertyListRef v=CFPreferencesCopyAppValue(CFSTR("unifiedIconSize"),PREFS_DOMAIN);CGFloat size=v&&CFGetTypeID(v)==CFNumberGetTypeID()?[(__bridge NSNumber *)v doubleValue]:30.0;if(v)CFRelease(v);return MIN(48.0,MAX(12.0,size)); }
 static NSString *ABMCPanelPreferredBundle(NSString *action) {
     NSDictionary *mapped=@{@"wechatScan":@"com.tencent.xin",@"wechatPay":@"com.tencent.xin",@"alipayScan":@"com.alipay.iphoneclient",@"alipayPay":@"com.alipay.iphoneclient"};
@@ -78,22 +79,26 @@ static UIImage *ABMCPanelIcon(NSString *action) {
         [self dismissAnimated:NO completion:^{[self.executor clearHardwareContext];}];self.actions=actions;self.executor=executor;
         self.hostWindow=ABMCPanelKeyWindow();UIWindowScene *scene=self.hostWindow.windowScene;if(!scene){[self.executor clearHardwareContext];return;}UIWindow *window=[[UIWindow alloc]initWithWindowScene:scene];window.frame=scene.coordinateSpace.bounds;window.windowLevel=UIWindowLevelAlert+2;window.opaque=NO;window.backgroundColor=UIColor.clearColor;UIViewController *root=[UIViewController new];root.view.backgroundColor=UIColor.clearColor;window.rootViewController=root;self.window=window;[window makeKeyAndVisible];
         ABMCPanelBackdrop *backdrop=[[ABMCPanelBackdrop alloc]initWithFrame:root.view.bounds];backdrop.owner=self;backdrop.backgroundColor=UIColor.clearColor;backdrop.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[root.view addSubview:backdrop];
+        // Keep a stable, opaque system-island silhouette above the transparent
+        // overlay window. It never receives touch and prevents the host view or
+        // card edge from showing through while the panel is swiped or dismissed.
+        UIView *islandCover=[[UIView alloc]initWithFrame:CGRectMake(0,0,126,37)];islandCover.center=CGPointMake(CGRectGetMidX(root.view.bounds),window.safeAreaInsets.top*.5);islandCover.backgroundColor=UIColor.blackColor;islandCover.layer.cornerRadius=18.5;islandCover.userInteractionEnabled=NO;islandCover.autoresizingMask=UIViewAutoresizingFlexibleLeftMargin|UIViewAutoresizingFlexibleRightMargin|UIViewAutoresizingFlexibleBottomMargin;[root.view addSubview:islandCover];self.islandCover=islandCover;
         NSUInteger columns=MIN((NSUInteger)4,actions.count),rows=(actions.count+columns-1)/columns;
         // Native-style compact card: edge-to-edge four-column rhythm, generous
         // white space and no expensive live blur/snapshot work.
-        CGFloat outerInset=8.0,padding=17.0,cellH=108.0,iconDiameter=62.0;
+        CGFloat outerInset=8.0,padding=16.0,cellH=96.0,iconDiameter=58.0;
         CGFloat width=CGRectGetWidth(root.view.bounds)-outerInset*2,height=padding*2+rows*cellH;
         CGFloat top=MAX(68.0,window.safeAreaInsets.top+12.0);
         UIVisualEffectView *card=[[UIVisualEffectView alloc]initWithEffect:nil];
-        card.frame=CGRectMake(outerInset,top,width,height);card.userInteractionEnabled=YES;card.layer.cornerRadius=38.0;card.clipsToBounds=YES;self.darkPanel=ABMCPanelIsDark(self.hostWindow);card.backgroundColor=ABMCPanelBackgroundColor(self.darkPanel);card.layer.borderWidth=1.0/UIScreen.mainScreen.scale;card.layer.borderColor=ABMCPanelTileBorder(self.darkPanel).CGColor;[root.view addSubview:card];backdrop.card=card;self.card=card;self.panelCenter=card.center;
+        card.frame=CGRectMake(outerInset,top,width,height);card.userInteractionEnabled=YES;card.layer.cornerRadius=34.0;card.clipsToBounds=YES;self.darkPanel=ABMCPanelIsDark(self.hostWindow);card.backgroundColor=ABMCPanelBackgroundColor(self.darkPanel);card.layer.borderWidth=1.0/UIScreen.mainScreen.scale;card.layer.borderColor=ABMCPanelTileBorder(self.darkPanel).CGColor;[root.view addSubview:card];[root.view bringSubviewToFront:islandCover];backdrop.card=card;self.card=card;self.panelCenter=card.center;
         CGFloat cellW=(width-padding*2)/columns;UIView *content=[[UIView alloc]initWithFrame:card.bounds];content.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[card.contentView addSubview:content];self.content=content;
         for(NSUInteger i=0;i<actions.count;i++){
             NSUInteger col=i%columns,row=i/columns;NSString *action=actions[i];
             UIView *item=[[UIView alloc]initWithFrame:CGRectMake(padding+col*cellW,padding+row*cellH,cellW,cellH)];
             UIButton *button=[UIButton buttonWithType:UIButtonTypeCustom];button.frame=CGRectMake((cellW-iconDiameter)*.5,0,iconDiameter,iconDiameter);button.layer.cornerRadius=iconDiameter*.5;button.clipsToBounds=YES;button.tag=i;
             BOOL artwork=ABMCPanelUsesArtwork(action);button.backgroundColor=ABMCPanelTileColor(self.darkPanel,artwork);button.layer.borderWidth=artwork?0:1.0/UIScreen.mainScreen.scale;button.layer.borderColor=ABMCPanelTileBorder(self.darkPanel).CGColor;
-            CGFloat iconSide=MIN(iconDiameter-12.0,ABMCPanelIconSize()+4.0);UIImageView *iconView=[[UIImageView alloc]initWithImage:ABMCPanelIcon(action)];iconView.frame=CGRectMake((iconDiameter-iconSide)*.5,(iconDiameter-iconSide)*.5,iconSide,iconSide);iconView.contentMode=UIViewContentModeScaleAspectFit;iconView.userInteractionEnabled=NO;if(artwork)iconView.layer.cornerRadius=8;iconView.clipsToBounds=YES;[button addSubview:iconView];[button addTarget:self action:@selector(actionTapped:) forControlEvents:UIControlEventTouchUpInside];[item addSubview:button];
-            UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(0,70,cellW,28)];label.text=ABMCPanelTitle(action);label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont systemFontOfSize:15 weight:UIFontWeightRegular];label.textColor=self.darkPanel?UIColor.whiteColor:UIColor.blackColor;label.numberOfLines=2;label.lineBreakMode=NSLineBreakByWordWrapping;[item addSubview:label];[content addSubview:item];
+            CGFloat iconSide=MIN(iconDiameter-12.0,ABMCPanelIconSize()+2.0);UIImageView *iconView=[[UIImageView alloc]initWithImage:ABMCPanelIcon(action)];iconView.frame=CGRectMake((iconDiameter-iconSide)*.5,(iconDiameter-iconSide)*.5,iconSide,iconSide);iconView.contentMode=UIViewContentModeScaleAspectFit;iconView.userInteractionEnabled=NO;if(artwork)iconView.layer.cornerRadius=8;iconView.clipsToBounds=YES;[button addSubview:iconView];[button addTarget:self action:@selector(actionTapped:) forControlEvents:UIControlEventTouchUpInside];[item addSubview:button];
+            UILabel *label=[[UILabel alloc]initWithFrame:CGRectMake(0,65,cellW,24)];label.text=ABMCPanelTitle(action);label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont systemFontOfSize:14 weight:UIFontWeightRegular];label.textColor=self.darkPanel?UIColor.whiteColor:UIColor.blackColor;label.numberOfLines=2;label.lineBreakMode=NSLineBreakByWordWrapping;[item addSubview:label];[content addSubview:item];
         }
         UIPanGestureRecognizer *pan=[[UIPanGestureRecognizer alloc]initWithTarget:self action:@selector(panned:)];[card addGestureRecognizer:pan];
         // Animate composited alpha/transform only: no layout calculation occurs per frame.
@@ -103,5 +108,5 @@ static UIImage *ABMCPanelIcon(NSString *action) {
 - (void)backgroundTapped:(id)sender {[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];}
 - (void)panned:(UIPanGestureRecognizer *)gesture {CGPoint t=[gesture translationInView:self.card];if(gesture.state==UIGestureRecognizerStateChanged&&t.y<0){self.card.transform=CGAffineTransformMakeTranslation(0,t.y*.35);}if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled){if(t.y<-54)[self dismissAnimated:YES completion:^{[self.executor clearHardwareContext];}];else [UIView animateWithDuration:.18 animations:^{self.card.transform=CGAffineTransformIdentity;}];}}
 - (void)actionTapped:(UIButton *)button {NSString *action=button.tag<self.actions.count?self.actions[button.tag]:nil;[self dismissAnimated:YES completion:^{[self.executor executeAction:action];[self.executor clearHardwareContext];}];}
-- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){window.hidden=YES;UIWindow *host=self.hostWindow;self.window=nil;self.card=nil;self.content=nil;self.actions=nil;self.hostWindow=nil;if(host)[host makeKeyWindow];if(completion)completion();};if(animated){UIView *content=self.content;[UIView animateWithDuration:.15 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState animations:^{content.alpha=0;content.transform=CGAffineTransformMakeScale(.94,.94);card.alpha=0;} completion:done];}else done(YES);}
+- (void)dismissAnimated:(BOOL)animated completion:(dispatch_block_t)completion {if(!self.window){if(completion)completion();return;}UIWindow *window=self.window;UIView *card=self.card;void(^done)(BOOL)=^(__unused BOOL finished){window.hidden=YES;UIWindow *host=self.hostWindow;self.window=nil;self.card=nil;self.content=nil;self.islandCover=nil;self.actions=nil;self.hostWindow=nil;if(host)[host makeKeyWindow];if(completion)completion();};if(animated){UIView *content=self.content;[UIView animateWithDuration:.15 delay:0 options:UIViewAnimationOptionCurveEaseIn|UIViewAnimationOptionBeginFromCurrentState animations:^{content.alpha=0;content.transform=CGAffineTransformMakeScale(.94,.94);card.alpha=0;} completion:done];}else done(YES);}
 @end
